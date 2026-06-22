@@ -3,6 +3,7 @@ const express = require('express');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
+const applicationRoutes = require('./routes/applicationRoutes');
 
 const app = express();
 
@@ -11,6 +12,7 @@ app.use(express.json());
 // Routes
 app.use('/v1/auth', authRoutes);
 // app.use('/v1/users', userRoutes);
+app.use('/v1/applications', applicationRoutes);
 
 // 404 handler
 app.use((req, res) => {
