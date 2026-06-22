@@ -285,7 +285,157 @@ image: <file>
   "newPassword": "NewPass456!"
 }
 ```
+## 2. Users
 
+### `GET /users/me`
+
+🔒 **Auth required**
+
+الحصول على بيانات المستخدم الحالي.
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "firstName": "Ahmed",
+    "lastName": "Hassan",
+    "email": "ahmed@example.com",
+    "phoneNumber": "+201012345678",
+    "nationality": "EG",
+    "dateOfBirth": "1990-05-15",
+    "gender": "male",
+    "preferredLanguage": "ar",
+    "profileImageUrl": "https://storage.example.com/profiles/ahmed.jpg",
+    "accountStatus": "active",
+    "createdAt": "2025-01-15T10:00:00Z",
+    "updatedAt": "2025-06-01T08:00:00Z"
+  }
+}
+```
+
+---
+
+### `PATCH /users/me`
+
+🔒 **Auth required**
+
+تعديل بيانات المستخدم (partial update).
+
+**Request**
+```json
+{
+  "firstName": "Ahmed",
+  "lastName": "Mohamed",
+  "phoneNumber": "+201098765432",
+  "preferredLanguage": "en"
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "firstName": "Ahmed",
+    "lastName": "Mohamed",
+    "email": "ahmed@example.com",
+    "phoneNumber": "+201098765432",
+    "preferredLanguage": "en",
+    "updatedAt": "2025-06-15T12:00:00Z"
+  }
+}
+```
+## 2. Users
+
+### `GET /users/me`
+
+🔒 **Auth required**
+
+الحصول على بيانات المستخدم الحالي.
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "firstName": "Ahmed",
+    "lastName": "Hassan",
+    "email": "ahmed@example.com",
+    "phoneNumber": "+201012345678",
+    "nationality": "EG",
+    "dateOfBirth": "1990-05-15",
+    "gender": "male",
+    "preferredLanguage": "ar",
+    "profileImageUrl": "https://storage.example.com/profiles/ahmed.jpg",
+    "accountStatus": "active",
+    "createdAt": "2025-01-15T10:00:00Z",
+    "updatedAt": "2025-06-01T08:00:00Z"
+  }
+}
+```
+
+---
+
+### `PATCH /users/me`
+
+🔒 **Auth required**
+
+تعديل بيانات المستخدم (partial update).
+
+**Request**
+```json
+{
+  "firstName": "Ahmed",
+  "lastName": "Mohamed",
+  "phoneNumber": "+201098765432",
+  "preferredLanguage": "en"
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "firstName": "Ahmed",
+    "lastName": "Mohamed",
+    "email": "ahmed@example.com",
+    "phoneNumber": "+201098765432",
+    "preferredLanguage": "en",
+    "updatedAt": "2025-06-15T12:00:00Z"
+  }
+}
+```
+
+---
+
+### `POST /users/me/profile-image`
+
+🔒 **Auth required**
+
+رفع صورة البروفايل.
+
+**Request** `multipart/form-data`
+```
+image: <file>
+``
+---
+
+### `POST /users/me/profile-image`
+
+🔒 **Auth required**
+
+رفع صورة البروفايل.
+
+**Request** `multipart/form-data`
+```
+image: <file>
+``
 **Response `200`**
 ```json
 {

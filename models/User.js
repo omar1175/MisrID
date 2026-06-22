@@ -49,16 +49,33 @@ const userSchema = new mongoose.Schema(
       default: 'ar',
     },
 
+    profileImageUrl: {
+      type: String,
+      default: null,
+    },
+
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
+
     accountStatus: {
       type: String,
       enum: ['active', 'suspended', 'deleted'],
       default: 'active',
     },
 
+    statusReason: {
+      type: String,
+      default: null,
+    },
+
     isVerified: {
       type: Boolean,
       default: false,
     },
+
     isLoggedIn: {
       type: Boolean,
       default: false,
