@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
 const User = require('../models/User');
+const cloudinary = require('../config/cloudinary');
+const { isValidImageBuffer } = require('../middlewares/upload.middleware');
 
 // GET /users/me
 exports.getMe = async (req, res) => {
@@ -81,31 +81,47 @@ exports.uploadProfileImage = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user._id);
-
-    if (user.profileImageUrl) {
-      const oldPath = path.join(
-        __dirname,
-        '..',
-        'uploads',
-        'profiles',
-        path.basename(user.profileImageUrl)
-      );
-      fs.unlink(oldPath, (err) => {
-        if (err && err.code !== 'ENOENT') {
-          console.error('Failed to delete old profile image:', err.message);
-        }
+    if (!isValidImageBuffer(req.file.buffer)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid image file. File content does not match an allowed image type.',
       });
     }
 
-    const imageUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/uploads/profiles/${req.file.filename}`;
-    user.profileImageUrl = imageUrl;
+    const user = await User.findById(req.user._id).select('+profileImagePublicId');
+    if (user.profileImagePublicId) {
+      try {
+        await cloudinary.uploader.destroy(user.profileImagePublicId);
+      } catch (err) {
+        console.error('Failed to delete old Cloudinary image:', err.message);
+      }
+    }
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'gov-services/profiles',
+          public_id: `user_${user._id}`,
+          overwrite: true,
+          resource_type: 'image',
+          transformation: [{ width: 500, height: 500, crop: 'fill', gravity: 'face' }],
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+      stream.end(req.file.buffer);
+    });
+
+    user.profileImageUrl = uploadResult.secure_url;
+    user.profileImagePublicId = uploadResult.public_id;
     await user.save();
 
     return res.status(200).json({
       success: true,
       data: {
-        profileImageUrl: imageUrl,
+        profileImageUrl: user.profileImageUrl,
       },
     });
   } catch (error) {

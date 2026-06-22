@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/user.controller');
 const { protect } = require('../middlewares/auth.middleware');
 const { isAdmin } = require('../middlewares/admin.middleware');
-const upload = require('../middlewares/upload.middleware');
+const { upload } = require('../middlewares/upload.middleware');
 
 router.use(protect);
 

@@ -1,33 +1,29 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-const uploadDir = path.join(__dirname, '..', 'uploads', 'profiles');
-
-// تأكد من وجود الفولدر
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const uniqueName = `${req.user._id}-${Date.now()}${ext}`;
-    cb(null, uniqueName);
-  },
-});
+const storage = multer.memoryStorage();
 
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
 
+const isValidImageBuffer = (buffer) => {
+  if (!buffer || buffer.length < 4) return false;
+
+  const hex = buffer.subarray(0, 4).toString('hex');
+
+  // JPEG: FF D8 FF
+  if (hex.startsWith('ffd8ff')) return true;
+  // PNG: 89 50 4E 47
+  if (hex.startsWith('89504e47')) return true;
+  // WEBP: 52 49 46 46 (RIFF) - check bytes 8-12 for "WEBP"
+  if (hex.startsWith('52494646') && buffer.subarray(8, 12).toString() === 'WEBP') return true;
+
+  return false;
+};
+
 const fileFilter = (req, file, cb) => {
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only JPEG, PNG, and WEBP images are allowed'), false);
+  if (!allowedTypes.includes(file.mimetype)) {
+    return cb(new Error('Only JPEG, PNG, and WEBP images are allowed'), false);
   }
+  cb(null, true);
 };
 
 const upload = multer({
@@ -36,4 +32,4 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 });
 
-module.exports = upload;
+module.exports = { upload, isValidImageBuffer };
