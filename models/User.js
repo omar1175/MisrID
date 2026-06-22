@@ -24,12 +24,13 @@ const userSchema = new mongoose.Schema(
     phoneNumber: {
       type: String,
       required: [true, 'Phone number is required'],
+      unique: true,
       trim: true,
     },
-    password: {
+    passwordHash: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: 8,
+      minlength: [8, 'Password must be at least 8 characters'],
       select: false,
     },
     nationality: {
@@ -46,51 +47,58 @@ const userSchema = new mongoose.Schema(
     preferredLanguage: {
       type: String,
       enum: ['ar', 'en'],
-      default: 'ar',
+      default: 'en',
     },
-
     profileImageUrl: {
       type: String,
       default: null,
     },
-
     profileImagePublicId: {
       type: String,
       default: null,
       select: false,
     },
-
-    role: {
-      type: String,
-      enum: ['user', 'admin'],
-      default: 'user',
-    },
-
     accountStatus: {
       type: String,
       enum: ['active', 'suspended', 'deleted'],
       default: 'active',
     },
-
     statusReason: {
       type: String,
       default: null,
     },
-
-    isVerified: {
+    roles: {
+      type: [String],
+      enum: ['foreigner', 'reviewer', 'admin', 'super_admin'],
+      default: ['foreigner'],
+    },
+    adminProfile: {
+      department: String,
+      adminLevel: {
+        type: String,
+        enum: ['reviewer', 'admin', 'super_admin'],
+      },
+      permissions: [String],
+    },
+    onboardingStatus: {
+      type: String,
+      enum: ['profile_required', 'completed'],
+      default: 'profile_required',
+    },
+    emailVerified: {
       type: Boolean,
       default: false,
     },
-
+    emailVerifiedAt: {
+      type: Date,
+    },
     isLoggedIn: {
       type: Boolean,
       default: false,
     },
-
     lastLoginAt: {
       type: Date,
     },
-
     emailVerificationOTP: {
       type: String,
       select: false,
@@ -99,7 +107,6 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
-
     refreshTokens: {
       type: [String],
       default: [],
@@ -117,27 +124,25 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+  if (!this.isModified('passwordHash')) return next();
+  this.passwordHash = await bcrypt.hash(this.passwordHash, 12);
+  return next();
 });
 
-// Compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
+  return bcrypt.compare(candidatePassword, this.passwordHash);
 };
 
-// Hide sensitive fields when converting to JSON
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
-  delete obj.password;
+  delete obj.passwordHash;
   delete obj.refreshTokens;
   delete obj.passwordResetToken;
   delete obj.passwordResetExpires;
   delete obj.emailVerificationOTP;
   delete obj.emailVerificationOTPExpires;
+  delete obj.profileImagePublicId;
   delete obj.__v;
   return obj;
 };

@@ -1,38 +1,113 @@
-# API Documentation — Government Services Platform
+# API Documentation - Foreigner Digital ID and Government Services Platform
 
-> **Base URL:** `https://api.yourplatform.com/v1`
-> **Auth:** Bearer JWT token in `Authorization` header (except login/register)
-> **Content-Type:** `application/json`
-> **Date format:** ISO 8601 — `2025-01-15T10:30:00Z`
+> Base URL: `https://api.yourplatform.com/v1`
+> Auth: Bearer JWT token in the `Authorization` header, except public endpoints.
+> Content-Type: `application/json`, unless the endpoint explicitly uses `multipart/form-data`.
+> Date format: ISO 8601, for example `2026-01-15T10:30:00Z`.
+> Database: MongoDB. All `_id` values are MongoDB ObjectId strings.
 
 ---
 
 ## Table of Contents
 
-1. [Auth](#1-auth)
-2. [Users](#2-users)
-3. [Identity Documents](#3-identity-documents)
-4. [Roles & Admins](#4-roles--admins)
-5. [Service Categories & Government Services](#5-service-categories--government-services)
-6. [Service Requests](#6-service-requests)
-7. [Request Documents](#7-request-documents)
-8. [Payments](#8-payments)
-9. [Appointments & Gov Offices](#9-appointments--gov-offices)
-10. [Complaints](#10-complaints)
-11. [Notifications](#11-notifications)
-12. [AI Assistant (RAG)](#12-ai-assistant-rag)
-13. [Audit Logs](#13-audit-logs)
-14. [Common Responses](#14-common-responses)
+1. API Conventions
+2. Auth and Account Access
+3. User Profile and Digital Identity Onboarding
+4. Services Catalog
+5. AI Legal Assistant and RAG
+6. Applications
+7. Application Documents and AI Verification
+8. Human Review and Escalation
+9. Payments
+10. Booking, Government Offices, and Appointments
+11. Notifications
+12. Complaints and Support
+13. Admin Users and Roles
+14. Legal Sources and Vector Indexing
+15. Audit Logs
+16. MongoDB Collections Summary
+17. Recommended Indexes
+18. Status Flows
+19. Common Error Codes
 
 ---
 
-## 1. Auth
+## 1. API Conventions
+
+### Standard Success Response
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+### Standard Error Response
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input data",
+    "details": [
+      {
+        "field": "email",
+        "message": "Must be a valid email address"
+      }
+    ]
+  }
+}
+```
+
+### Pagination Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "pagination": {
+      "total": 125,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 7
+    }
+  }
+}
+```
+
+### Common Headers
+
+```http
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+Accept-Language: en
+```
+
+### Common Query Parameters
+
+| Parameter | Type | Description |
+|---|---:|---|
+| `page` | number | Page number. Default is `1`. |
+| `limit` | number | Page size. Default is `20`. |
+| `search` | string | Keyword search. |
+| `sortBy` | string | Sort field. |
+| `sortOrder` | string | `asc` or `desc`. |
+
+---
+
+## 2. Auth and Account Access
 
 ### `POST /auth/register`
 
-تسجيل مستخدم جديد.
+Creates a new user account for a foreign resident or visitor and sends an email verification OTP.
+
+Public endpoint.
 
 **Request**
+
 ```json
 {
   "firstName": "Ahmed",
@@ -40,14 +115,12 @@
   "email": "ahmed@example.com",
   "phoneNumber": "+201012345678",
   "password": "StrongPass123!",
-  "nationality": "EG",
-  "dateOfBirth": "1990-05-15",
-  "gender": "male",
-  "preferredLanguage": "ar"
+  "preferredLanguage": "en"
 }
 ```
 
 **Response `201`**
+
 ```json
 {
   "success": true,
@@ -58,15 +131,15 @@
       "lastName": "Hassan",
       "email": "ahmed@example.com",
       "phoneNumber": "+201012345678",
-      "nationality": "EG",
-      "dateOfBirth": "1990-05-15",
-      "gender": "male",
-      "preferredLanguage": "ar",
+      "emailVerified": false,
+      "preferredLanguage": "en",
       "accountStatus": "active",
-      "createdAt": "2025-01-15T10:00:00Z"
+      "roles": ["foreigner"],
+      "onboardingStatus": "profile_required",
+      "createdAt": "2026-01-15T10:00:00Z"
     },
     "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refreshToken": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+    "refreshToken": "refresh-token-value"
   }
 }
 ```
@@ -75,9 +148,10 @@
 
 ### `POST /auth/login`
 
-تسجيل الدخول.
+Public endpoint.
 
 **Request**
+
 ```json
 {
   "email": "ahmed@example.com",
@@ -86,6 +160,7 @@
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -95,11 +170,13 @@
       "firstName": "Ahmed",
       "lastName": "Hassan",
       "email": "ahmed@example.com",
+      "emailVerified": true,
       "accountStatus": "active",
-      "preferredLanguage": "ar"
+      "roles": ["foreigner"],
+      "onboardingStatus": "completed"
     },
-    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refreshToken": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+    "accessToken": "access-token-value",
+    "refreshToken": "refresh-token-value"
   }
 }
 ```
@@ -108,22 +185,24 @@
 
 ### `POST /auth/refresh-token`
 
-تجديد الـ access token.
+Public endpoint.
 
 **Request**
+
 ```json
 {
-  "refreshToken": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+  "refreshToken": "refresh-token-value"
 }
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refreshToken": "bmV3UmVmcmVzaFRva2Vu..."
+    "accessToken": "new-access-token-value",
+    "refreshToken": "new-refresh-token-value"
   }
 }
 ```
@@ -132,11 +211,18 @@
 
 ### `POST /auth/logout`
 
-🔒 **Auth required**
+Auth required.
 
-**Request** _(body فاضي)_
+**Request**
+
+```json
+{
+  "refreshToken": "refresh-token-value"
+}
+```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -146,9 +232,73 @@
 
 ---
 
-### `POST /auth/forgot-password`
+### `POST /auth/otp/send`
+
+Sends an email verification OTP to the authenticated user's email address.
+
+Auth required. Email verification is not required for this endpoint.
 
 **Request**
+
+```json
+{
+  "email": "ahmed@example.com"
+}
+```
+
+The `email` field is optional. If it is sent, it must match the authenticated user's email address.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "message": "OTP sent successfully",
+  "data": {
+    "expiresInSeconds": 600
+  }
+}
+```
+
+---
+
+### `POST /auth/otp/verify`
+
+Verifies an email OTP and marks the user's email as verified.
+
+Auth required. Email verification is not required for this endpoint.
+
+**Request**
+
+```json
+{
+  "email": "ahmed@example.com",
+  "otpCode": "123456"
+}
+```
+
+The `email` field is optional. If it is sent, it must match the authenticated user's email address.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "emailVerified": true,
+    "verifiedAt": "2026-01-15T10:05:00Z"
+  }
+}
+```
+
+---
+
+### `POST /auth/forgot-password`
+
+Public endpoint.
+
+**Request**
+
 ```json
 {
   "email": "ahmed@example.com"
@@ -156,6 +306,7 @@
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -167,15 +318,19 @@
 
 ### `POST /auth/reset-password`
 
+Public endpoint.
+
 **Request**
+
 ```json
 {
-  "token": "reset-token-from-email",
+  "token": "reset-token-value",
   "newPassword": "NewStrongPass456!"
 }
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -185,15 +340,16 @@
 
 ---
 
-## 2. Users
+## 3. User Profile and Digital Identity Onboarding
 
 ### `GET /users/me`
 
-🔒 **Auth required**
+Returns the current user account.
 
-الحصول على بيانات المستخدم الحالي.
+Auth required.
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -203,14 +359,14 @@
     "lastName": "Hassan",
     "email": "ahmed@example.com",
     "phoneNumber": "+201012345678",
-    "nationality": "EG",
-    "dateOfBirth": "1990-05-15",
-    "gender": "male",
-    "preferredLanguage": "ar",
+    "emailVerified": true,
+    "preferredLanguage": "en",
     "profileImageUrl": "https://storage.example.com/profiles/ahmed.jpg",
     "accountStatus": "active",
-    "createdAt": "2025-01-15T10:00:00Z",
-    "updatedAt": "2025-06-01T08:00:00Z"
+    "roles": ["foreigner"],
+    "onboardingStatus": "completed",
+    "createdAt": "2026-01-15T10:00:00Z",
+    "updatedAt": "2026-01-16T12:00:00Z"
   }
 }
 ```
@@ -219,11 +375,12 @@
 
 ### `PATCH /users/me`
 
-🔒 **Auth required**
+Updates non-sensitive account fields.
 
-تعديل بيانات المستخدم (partial update).
+Auth required.
 
 **Request**
+
 ```json
 {
   "firstName": "Ahmed",
@@ -234,6 +391,7 @@
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -241,10 +399,9 @@
     "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
     "firstName": "Ahmed",
     "lastName": "Mohamed",
-    "email": "ahmed@example.com",
     "phoneNumber": "+201098765432",
     "preferredLanguage": "en",
-    "updatedAt": "2025-06-15T12:00:00Z"
+    "updatedAt": "2026-01-16T12:00:00Z"
   }
 }
 ```
@@ -253,16 +410,18 @@
 
 ### `POST /users/me/profile-image`
 
-🔒 **Auth required**
+Uploads or replaces the profile image.
 
-رفع صورة البروفايل.
+Auth required.
 
-**Request** `multipart/form-data`
-```
+**Request `multipart/form-data`**
+
+```text
 image: <file>
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -274,548 +433,164 @@ image: <file>
 
 ---
 
-### `PATCH /users/me/change-password`
+### `GET /profiles/me`
 
-🔒 **Auth required**
+Returns the current user's sensitive digital identity profile.
 
-**Request**
-```json
-{
-  "currentPassword": "OldPass123!",
-  "newPassword": "NewPass456!"
-}
-```
-## 2. Users
+Auth required.
 
-### `GET /users/me`
-
-🔒 **Auth required**
-
-الحصول على بيانات المستخدم الحالي.
+Sensitive values are masked in normal responses.
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "firstName": "Ahmed",
-    "lastName": "Hassan",
-    "email": "ahmed@example.com",
-    "phoneNumber": "+201012345678",
-    "nationality": "EG",
-    "dateOfBirth": "1990-05-15",
-    "gender": "male",
-    "preferredLanguage": "ar",
-    "profileImageUrl": "https://storage.example.com/profiles/ahmed.jpg",
-    "accountStatus": "active",
-    "createdAt": "2025-01-15T10:00:00Z",
-    "updatedAt": "2025-06-01T08:00:00Z"
-  }
-}
-```
-
----
-
-### `PATCH /users/me`
-
-🔒 **Auth required**
-
-تعديل بيانات المستخدم (partial update).
-
-**Request**
-```json
-{
-  "firstName": "Ahmed",
-  "lastName": "Mohamed",
-  "phoneNumber": "+201098765432",
-  "preferredLanguage": "en"
-}
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "firstName": "Ahmed",
-    "lastName": "Mohamed",
-    "email": "ahmed@example.com",
-    "phoneNumber": "+201098765432",
-    "preferredLanguage": "en",
-    "updatedAt": "2025-06-15T12:00:00Z"
-  }
-}
-```
-## 2. Users
-
-### `GET /users/me`
-
-🔒 **Auth required**
-
-الحصول على بيانات المستخدم الحالي.
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "firstName": "Ahmed",
-    "lastName": "Hassan",
-    "email": "ahmed@example.com",
-    "phoneNumber": "+201012345678",
-    "nationality": "EG",
-    "dateOfBirth": "1990-05-15",
-    "gender": "male",
-    "preferredLanguage": "ar",
-    "profileImageUrl": "https://storage.example.com/profiles/ahmed.jpg",
-    "accountStatus": "active",
-    "createdAt": "2025-01-15T10:00:00Z",
-    "updatedAt": "2025-06-01T08:00:00Z"
-  }
-}
-```
-
----
-
-### `PATCH /users/me`
-
-🔒 **Auth required**
-
-تعديل بيانات المستخدم (partial update).
-
-**Request**
-```json
-{
-  "firstName": "Ahmed",
-  "lastName": "Mohamed",
-  "phoneNumber": "+201098765432",
-  "preferredLanguage": "en"
-}
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "firstName": "Ahmed",
-    "lastName": "Mohamed",
-    "email": "ahmed@example.com",
-    "phoneNumber": "+201098765432",
-    "preferredLanguage": "en",
-    "updatedAt": "2025-06-15T12:00:00Z"
-  }
-}
-```
-
----
-
-### `POST /users/me/profile-image`
-
-🔒 **Auth required**
-
-رفع صورة البروفايل.
-
-**Request** `multipart/form-data`
-```
-image: <file>
-``
----
-
-### `POST /users/me/profile-image`
-
-🔒 **Auth required**
-
-رفع صورة البروفايل.
-
-**Request** `multipart/form-data`
-```
-image: <file>
-``
-**Response `200`**
-```json
-{
-  "success": true,
-  "message": "Password changed successfully"
-}
-```
-
----
-
-### `GET /users` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-قائمة المستخدمين مع pagination وفلترة.
-
-**Query Params**
-```
-page=1&limit=20&status=active&search=ahmed&nationality=EG
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "users": [
-      {
-        "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
-        "firstName": "Ahmed",
-        "lastName": "Hassan",
-        "email": "ahmed@example.com",
-        "accountStatus": "active",
-        "nationality": "EG",
-        "createdAt": "2025-01-15T10:00:00Z"
-      }
-    ],
-    "pagination": {
-      "total": 150,
-      "page": 1,
-      "limit": 20,
-      "totalPages": 8
-    }
-  }
-}
-```
-
----
-
-### `PATCH /users/:userId/status` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-تغيير حالة المستخدم (تفعيل / إيقاف).
-
-**Request**
-```json
-{
-  "status": "suspended",
-  "reason": "Violation of terms"
-}
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "accountStatus": "suspended"
-  }
-}
-```
-
----
-
-## 3. Identity Documents
-
-### `POST /identity-documents`
-
-🔒 **Auth required**
-
-رفع وثيقة هوية جديدة.
-
-**Request** `multipart/form-data`
-```
-documentType: national_id          (national_id | passport | birth_certificate | driving_license)
-documentNumber: 29005151234567
-issueDate: 2020-01-01
-expiryDate: 2030-01-01
-documentFile: <file>
-```
-
-**Response `201`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f2b3c4d5e6f7a8b9c0d2e3",
+    "_id": "65a1b2c3d4e5f6a7b8c9d0e1",
     "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "documentType": "national_id",
-    "documentNumber": "29005151234567",
-    "issueDate": "2020-01-01",
-    "expiryDate": "2030-01-01",
-    "documentFileUrl": "https://storage.example.com/docs/id-123.jpg",
-    "verificationStatus": "pending",
-    "createdAt": "2025-06-15T10:00:00Z"
-  }
-}
-```
-
----
-
-### `GET /identity-documents`
-
-🔒 **Auth required**
-
-الحصول على كل وثائق المستخدم الحالي.
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "64f2b3c4d5e6f7a8b9c0d2e3",
-      "documentType": "national_id",
-      "documentNumber": "29005151234567",
-      "issueDate": "2020-01-01",
-      "expiryDate": "2030-01-01",
-      "documentFileUrl": "https://storage.example.com/docs/id-123.jpg",
-      "verificationStatus": "verified",
-      "createdAt": "2025-06-15T10:00:00Z",
-      "verification": {
-        "confidenceScore": 0.97,
-        "matchesProfile": true,
-        "verificationResult": "approved",
-        "verifiedAt": "2025-06-15T10:05:00Z"
-      }
-    }
-  ]
-}
-```
-
----
-
-### `GET /identity-documents/:documentId`
-
-🔒 **Auth required**
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f2b3c4d5e6f7a8b9c0d2e3",
-    "documentType": "national_id",
-    "documentNumber": "29005151234567",
-    "issueDate": "2020-01-01",
-    "expiryDate": "2030-01-01",
-    "documentFileUrl": "https://storage.example.com/docs/id-123.jpg",
-    "verificationStatus": "verified",
-    "createdAt": "2025-06-15T10:00:00Z",
-    "verification": {
-      "_id": "64f3c4d5e6f7a8b9c0d3e4f5",
-      "ocrText": "AHMED HASSAN MOHAMED ...",
-      "extractedFields": {
-        "name": "Ahmed Hassan Mohamed",
-        "nationalId": "29005151234567",
-        "dateOfBirth": "1990-05-15",
-        "expiryDate": "2030-01-01"
-      },
-      "confidenceScore": 0.97,
-      "matchesProfile": true,
-      "verificationResult": "approved",
-      "notes": null,
-      "verifiedAt": "2025-06-15T10:05:00Z"
-    }
-  }
-}
-```
-
----
-
-### `DELETE /identity-documents/:documentId`
-
-🔒 **Auth required**
-
-حذف وثيقة (فقط لو مش مربوطة بطلب نشط).
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "message": "Document deleted successfully"
-}
-```
-
----
-
-### `POST /identity-documents/:documentId/verify` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-مراجعة ووثيقة يدوياً.
-
-**Request**
-```json
-{
-  "verificationResult": "approved",
-  "notes": "Document is clear and matches profile"
-}
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "documentId": "64f2b3c4d5e6f7a8b9c0d2e3",
-    "verificationResult": "approved",
-    "verifiedAt": "2025-06-15T11:00:00Z"
-  }
-}
-```
-
----
-
-## 4. Roles & Admins
-
-### `GET /roles` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "64f4d5e6f7a8b9c0d4e5f6a7",
-      "roleName": "admin",
-      "description": "Full system access"
+    "passportNumberMasked": "A123****",
+    "currentNationality": "SA",
+    "entryDate": "2025-11-10",
+    "currentResidencyType": "tourist_visa",
+    "currentResidencyExpiryDate": "2026-02-10",
+    "address": {
+      "country": "EG",
+      "city": "Minya",
+      "area": "New Minya",
+      "street": "Example Street",
+      "buildingNo": "12"
     },
-    {
-      "_id": "64f4d5e6f7a8b9c0d4e5f6a8",
-      "roleName": "reviewer",
-      "description": "Can review and approve service requests"
-    },
-    {
-      "_id": "64f4d5e6f7a8b9c0d4e5f6a9",
-      "roleName": "citizen",
-      "description": "Regular platform user"
-    }
-  ]
-}
-```
-
----
-
-### `POST /users/:userId/roles` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-تعيين دور لمستخدم.
-
-**Request**
-```json
-{
-  "roleId": "64f4d5e6f7a8b9c0d4e5f6a8"
-}
-```
-
-**Response `201`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f5e6f7a8b9c0d5e6f7a8b9",
-    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "roleId": "64f4d5e6f7a8b9c0d4e5f6a8",
-    "assignedAt": "2025-06-15T12:00:00Z"
+    "profileStatus": "complete",
+    "riskLevel": "low",
+    "createdAt": "2026-01-15T10:10:00Z",
+    "updatedAt": "2026-01-16T09:00:00Z"
   }
 }
 ```
 
 ---
 
-### `DELETE /users/:userId/roles/:roleId` _(Admin only)_
+### `POST /profiles/me`
 
-🔒 **Auth required — Admin**
+Completes the onboarding profile.
 
-**Response `200`**
-```json
-{
-  "success": true,
-  "message": "Role removed from user"
-}
-```
+Auth required.
 
----
-
-### `GET /admins` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "64f6f7a8b9c0d6e7f8a9b0c1",
-      "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-      "user": {
-        "firstName": "Sara",
-        "lastName": "Ali",
-        "email": "sara@gov.eg"
-      },
-      "department": "Civil Affairs",
-      "adminLevel": "supervisor"
-    }
-  ]
-}
-```
-
----
-
-### `POST /admins` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-ترقية مستخدم لـ admin.
+The backend must encrypt or hash sensitive identifiers such as passport number.
 
 **Request**
+
 ```json
 {
-  "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-  "department": "Civil Affairs",
-  "adminLevel": "reviewer"
+  "passportNumber": "A12345678",
+  "currentNationality": "SA",
+  "dateOfBirth": "1993-05-15",
+  "gender": "male",
+  "entryDate": "2025-11-10",
+  "currentResidencyType": "tourist_visa",
+  "currentResidencyExpiryDate": "2026-02-10",
+  "address": {
+    "country": "EG",
+    "city": "Minya",
+    "area": "New Minya",
+    "street": "Example Street",
+    "buildingNo": "12",
+    "latitude": 28.0871,
+    "longitude": 30.7618
+  },
+  "emergencyContact": {
+    "name": "Omar Hassan",
+    "phoneNumber": "+201111111111",
+    "relationship": "friend"
+  }
 }
 ```
 
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64f6f7a8b9c0d6e7f8a9b0c1",
+    "_id": "65a1b2c3d4e5f6a7b8c9d0e1",
     "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "department": "Civil Affairs",
-    "adminLevel": "reviewer"
+    "passportNumberMasked": "A123****",
+    "currentNationality": "SA",
+    "entryDate": "2025-11-10",
+    "currentResidencyType": "tourist_visa",
+    "profileStatus": "complete",
+    "onboardingStatus": "completed",
+    "createdAt": "2026-01-15T10:10:00Z"
   }
 }
 ```
 
 ---
 
-## 5. Service Categories & Government Services
+### `PATCH /profiles/me`
+
+Updates the user's sensitive profile.
+
+Auth required.
+
+**Request**
+
+```json
+{
+  "currentResidencyType": "temporary_residence",
+  "currentResidencyExpiryDate": "2026-12-31",
+  "address": {
+    "country": "EG",
+    "city": "Cairo",
+    "area": "Nasr City",
+    "street": "Example Street",
+    "buildingNo": "20"
+  }
+}
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65a1b2c3d4e5f6a7b8c9d0e1",
+    "currentResidencyType": "temporary_residence",
+    "currentResidencyExpiryDate": "2026-12-31",
+    "updatedAt": "2026-01-17T08:00:00Z"
+  }
+}
+```
+
+---
+
+## 4. Services Catalog
 
 ### `GET /service-categories`
 
-الحصول على كل التصنيفات.
+Returns all public service categories.
+
+Public endpoint.
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": [
     {
-      "_id": "64f7a8b9c0d7e8f9a0b1c2d3",
-      "categoryName": "Civil Status"
+      "_id": "65b1c2d3e4f5a6b7c8d9e0f1",
+      "categoryName": "Residency Services",
+      "slug": "residency-services",
+      "isActive": true
     },
     {
-      "_id": "64f7a8b9c0d7e8f9a0b1c2d4",
-      "categoryName": "Driving & Vehicles"
-    },
-    {
-      "_id": "64f7a8b9c0d7e8f9a0b1c2d5",
-      "categoryName": "Business Registration"
+      "_id": "65b1c2d3e4f5a6b7c8d9e0f2",
+      "categoryName": "Driving and Traffic Services",
+      "slug": "driving-and-traffic-services",
+      "isActive": true
     }
   ]
 }
@@ -823,267 +598,588 @@ documentFile: <file>
 
 ---
 
-### `POST /service-categories` _(Admin only)_
+### `POST /service-categories`
 
-🔒 **Auth required — Admin**
+Creates a service category.
+
+Auth required. Admin only.
 
 **Request**
+
 ```json
 {
-  "categoryName": "Real Estate"
+  "categoryName": "Residency Services",
+  "slug": "residency-services",
+  "description": "Residency renewal and related services",
+  "isActive": true
 }
 ```
 
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64f7a8b9c0d7e8f9a0b1c2d6",
-    "categoryName": "Real Estate"
+    "_id": "65b1c2d3e4f5a6b7c8d9e0f1",
+    "categoryName": "Residency Services",
+    "slug": "residency-services",
+    "isActive": true,
+    "createdAt": "2026-01-15T11:00:00Z"
   }
 }
 ```
 
 ---
 
-### `GET /government-services`
+### `GET /services`
 
-الحصول على كل الخدمات مع فلترة.
+Returns government services available on the platform.
+
+Public endpoint.
 
 **Query Params**
-```
-categoryId=64f7a8b9c0d7e8f9a0b1c2d3&isActive=true&search=passport
-```
 
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "64f8b9c0d8e9f0a1b2c3d4e5",
-      "categoryId": "64f7a8b9c0d7e8f9a0b1c2d3",
-      "category": {
-        "categoryName": "Civil Status"
-      },
-      "serviceName": "Passport Renewal",
-      "description": "Renew your Egyptian passport",
-      "estimatedDays": 7,
-      "governmentFee": 300,
-      "platformFee": 50,
-      "availableOnline": true,
-      "isActive": true,
-      "requiredDocuments": [
-        {
-          "_id": "64f9c0d1e2f3a4b5c6d7e8f9",
-          "documentType": "national_id",
-          "isMandatory": true
-        },
-        {
-          "_id": "64f9c0d1e2f3a4b5c6d7e8fa",
-          "documentType": "old_passport",
-          "isMandatory": false
-        }
-      ]
-    }
-  ]
-}
-```
-
----
-
-### `GET /government-services/:serviceId`
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64f8b9c0d8e9f0a1b2c3d4e5",
-    "categoryId": "64f7a8b9c0d7e8f9a0b1c2d3",
-    "category": { "categoryName": "Civil Status" },
-    "serviceName": "Passport Renewal",
-    "description": "Renew your Egyptian passport",
-    "estimatedDays": 7,
-    "governmentFee": 300,
-    "platformFee": 50,
-    "availableOnline": true,
-    "isActive": true,
-    "requiredDocuments": [
-      {
-        "_id": "64f9c0d1e2f3a4b5c6d7e8f9",
-        "documentType": "national_id",
-        "isMandatory": true
-      }
-    ]
-  }
-}
-```
-
----
-
-### `POST /government-services` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-**Request**
-```json
-{
-  "categoryId": "64f7a8b9c0d7e8f9a0b1c2d3",
-  "serviceName": "Birth Certificate Copy",
-  "description": "Get a copy of your birth certificate",
-  "estimatedDays": 3,
-  "governmentFee": 50,
-  "platformFee": 20,
-  "availableOnline": true,
-  "isActive": true,
-  "requiredDocuments": [
-    { "documentType": "national_id", "isMandatory": true }
-  ]
-}
-```
-
-**Response `201`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64fab1c2d3e4f5a6b7c8d9e0",
-    "serviceName": "Birth Certificate Copy",
-    "estimatedDays": 3,
-    "governmentFee": 50,
-    "platformFee": 20,
-    "availableOnline": true,
-    "isActive": true,
-    "requiredDocuments": [
-      {
-        "_id": "64fab1c2d3e4f5a6b7c8d9e1",
-        "documentType": "national_id",
-        "isMandatory": true
-      }
-    ]
-  }
-}
-```
-
----
-
-### `PATCH /government-services/:serviceId` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-**Request**
-```json
-{
-  "governmentFee": 350,
-  "estimatedDays": 5,
-  "isActive": false
-}
+```text
+categoryId=65b1c2d3e4f5a6b7c8d9e0f1&isActive=true&search=residence&page=1&limit=20
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64f8b9c0d8e9f0a1b2c3d4e5",
-    "governmentFee": 350,
-    "estimatedDays": 5,
-    "isActive": false,
-    "updatedAt": "2025-06-15T14:00:00Z"
-  }
-}
-```
-
----
-
-## 6. Service Requests
-
-### `POST /service-requests`
-
-🔒 **Auth required**
-
-إنشاء طلب خدمة جديد.
-
-**Request**
-```json
-{
-  "serviceId": "64f8b9c0d8e9f0a1b2c3d4e5",
-  "documentIds": [
-    "64f2b3c4d5e6f7a8b9c0d2e3"
-  ],
-  "notes": "Urgent — travelling next month"
-}
-```
-
-**Response `201`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "serviceId": "64f8b9c0d8e9f0a1b2c3d4e5",
-    "service": {
-      "serviceName": "Passport Renewal",
-      "estimatedDays": 7,
-      "governmentFee": 300,
-      "platformFee": 50
-    },
-    "status": "pending",
-    "currentStep": "document_review",
-    "aiMatchScore": 0.94,
-    "submissionDate": "2025-06-15T10:00:00Z",
-    "completionDate": null,
-    "rejectionReason": null,
-    "notes": "Urgent — travelling next month",
-    "documents": [
+    "items": [
       {
-        "_id": "64fbc2d3e4f5a6b7c8d9e0f2",
-        "documentId": "64f2b3c4d5e6f7a8b9c0d2e3",
-        "documentType": "national_id",
-        "isApproved": null,
-        "comments": null
-      }
-    ]
-  }
-}
-```
-
----
-
-### `GET /service-requests`
-
-🔒 **Auth required**
-
-الحصول على طلبات المستخدم الحالي.
-
-**Query Params**
-```
-page=1&limit=10&status=pending&serviceId=64f8b9c0d8e9f0a1b2c3d4e5
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "requests": [
-      {
-        "_id": "64fbc2d3e4f5a6b7c8d9e0f1",
-        "service": {
-          "serviceName": "Passport Renewal",
-          "estimatedDays": 7
-        },
-        "status": "pending",
-        "currentStep": "document_review",
-        "aiMatchScore": 0.94,
-        "submissionDate": "2025-06-15T10:00:00Z"
+        "_id": "65b2c3d4e5f6a7b8c9d0e1f2",
+        "categoryId": "65b1c2d3e4f5a6b7c8d9e0f1",
+        "serviceName": "Tourist Residence Renewal",
+        "slug": "tourist-residence-renewal",
+        "description": "Renew a tourist residence permit.",
+        "estimatedDays": 7,
+        "governmentFee": 500,
+        "platformFee": 100,
+        "currency": "EGP",
+        "requiresAppointment": true,
+        "isActive": true,
+        "requiredDocuments": [
+          {
+            "documentType": "passport",
+            "isMandatory": true,
+            "description": "Valid passport image"
+          },
+          {
+            "documentType": "rental_contract",
+            "isMandatory": true,
+            "description": "Valid rental contract"
+          }
+        ]
       }
     ],
     "pagination": {
-      "total": 5,
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### `GET /services/:serviceId`
+
+Returns one service and its requirements.
+
+Public endpoint.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65b2c3d4e5f6a7b8c9d0e1f2",
+    "categoryId": "65b1c2d3e4f5a6b7c8d9e0f1",
+    "category": {
+      "categoryName": "Residency Services"
+    },
+    "serviceName": "Tourist Residence Renewal",
+    "slug": "tourist-residence-renewal",
+    "description": "Renew a tourist residence permit.",
+    "estimatedDays": 7,
+    "governmentFee": 500,
+    "platformFee": 100,
+    "currency": "EGP",
+    "requiresAppointment": true,
+    "competentOfficeType": "passport_office",
+    "isActive": true,
+    "requiredDocuments": [
+      {
+        "documentType": "passport",
+        "isMandatory": true,
+        "validationRules": {
+          "mustBeReadable": true,
+          "mustBeUnexpired": true,
+          "mustMatchProfile": true
+        }
+      },
+      {
+        "documentType": "rental_contract",
+        "isMandatory": true,
+        "validationRules": {
+          "mustBeReadable": true,
+          "mustBeUnexpired": true
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### `POST /services`
+
+Creates a government service.
+
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "categoryId": "65b1c2d3e4f5a6b7c8d9e0f1",
+  "serviceName": "Foreign Driving License Exchange",
+  "slug": "foreign-driving-license-exchange",
+  "description": "Apply to exchange a foreign driving license.",
+  "estimatedDays": 10,
+  "governmentFee": 700,
+  "platformFee": 150,
+  "currency": "EGP",
+  "requiresAppointment": true,
+  "competentOfficeType": "traffic_unit",
+  "isActive": true,
+  "requiredDocuments": [
+    {
+      "documentType": "passport",
+      "isMandatory": true,
+      "description": "Valid passport image"
+    },
+    {
+      "documentType": "foreign_driving_license",
+      "isMandatory": true,
+      "description": "Valid foreign driving license"
+    },
+    {
+      "documentType": "medical_certificate",
+      "isMandatory": true,
+      "description": "Medical certificate"
+    }
+  ]
+}
+```
+
+**Response `201`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65b2c3d4e5f6a7b8c9d0e1f3",
+    "serviceName": "Foreign Driving License Exchange",
+    "slug": "foreign-driving-license-exchange",
+    "isActive": true,
+    "createdAt": "2026-01-15T11:30:00Z"
+  }
+}
+```
+
+---
+
+### `PATCH /services/:serviceId`
+
+Updates a government service.
+
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "estimatedDays": 8,
+  "governmentFee": 750,
+  "platformFee": 150,
+  "isActive": true
+}
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65b2c3d4e5f6a7b8c9d0e1f3",
+    "estimatedDays": 8,
+    "governmentFee": 750,
+    "platformFee": 150,
+    "isActive": true,
+    "updatedAt": "2026-01-16T10:00:00Z"
+  }
+}
+```
+
+---
+
+## 5. AI Legal Assistant and RAG
+
+### `POST /ai/conversations`
+
+Starts a new AI conversation.
+
+Auth required.
+
+**Request**
+
+```json
+{
+  "channel": "web",
+  "language": "en"
+}
+```
+
+**Response `201`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65c1d2e3f4a5b6c7d8e9f0a1",
+    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "channel": "web",
+    "language": "en",
+    "startedAt": "2026-01-15T12:00:00Z"
+  }
+}
+```
+
+---
+
+### `POST /ai/conversations/:conversationId/messages`
+
+Sends a user message to the AI assistant and returns an evidence-based answer with retrieved legal context.
+
+Auth required.
+
+**Request**
+
+```json
+{
+  "messageText": "Can I drive in Egypt using my Saudi driving license?",
+  "inputType": "text",
+  "language": "en"
+}
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "userMessage": {
+      "_id": "65c2d3e4f5a6b7c8d9e0f1a2",
+      "conversationId": "65c1d2e3f4a5b6c7d8e9f0a1",
+      "senderType": "user",
+      "messageText": "Can I drive in Egypt using my Saudi driving license?",
+      "inputType": "text",
+      "createdAt": "2026-01-15T12:01:00Z"
+    },
+    "assistantMessage": {
+      "_id": "65c2d3e4f5a6b7c8d9e0f1a3",
+      "conversationId": "65c1d2e3f4a5b6c7d8e9f0a1",
+      "senderType": "assistant",
+      "messageText": "You may need to meet specific conditions before driving in Egypt with a foreign license. The platform can help you check eligibility and start the required service.",
+      "answerConfidence": 0.91,
+      "retrievals": [
+        {
+          "legalChunkId": "65d1e2f3a4b5c6d7e8f9a0b1",
+          "sourceId": "65d0e1f2a3b4c5d6e7f8a9b0",
+          "sourceTitle": "Traffic Regulations Reference",
+          "articleRef": "Article 12",
+          "similarityScore": 0.93,
+          "rankPosition": 1,
+          "sourceUrl": "https://example.com/legal-source"
+        }
+      ],
+      "suggestedActions": [
+        {
+          "type": "start_service",
+          "label": "Start service now",
+          "serviceId": "65b2c3d4e5f6a7b8c9d0e1f3",
+          "serviceName": "Foreign Driving License Exchange"
+        }
+      ],
+      "createdAt": "2026-01-15T12:01:03Z"
+    }
+  }
+}
+```
+
+---
+
+### `POST /ai/conversations/:conversationId/voice-messages`
+
+Uploads a voice message, transcribes it, and returns an AI response.
+
+Auth required.
+
+**Request `multipart/form-data`**
+
+```text
+voiceFile: <audio_file>
+language: en
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "transcript": "I want to renew my tourist residence.",
+    "userMessage": {
+      "_id": "65c2d3e4f5a6b7c8d9e0f1a4",
+      "senderType": "user",
+      "inputType": "voice",
+      "messageText": "I want to renew my tourist residence.",
+      "createdAt": "2026-01-15T12:05:00Z"
+    },
+    "assistantMessage": {
+      "_id": "65c2d3e4f5a6b7c8d9e0f1a5",
+      "senderType": "assistant",
+      "messageText": "You can start a tourist residence renewal application. The required documents are passport and rental contract.",
+      "suggestedActions": [
+        {
+          "type": "start_service",
+          "label": "Start service now",
+          "serviceId": "65b2c3d4e5f6a7b8c9d0e1f2"
+        }
+      ],
+      "createdAt": "2026-01-15T12:05:04Z"
+    }
+  }
+}
+```
+
+---
+
+### `GET /ai/conversations`
+
+Returns the current user's AI conversations.
+
+Auth required.
+
+**Query Params**
+
+```text
+page=1&limit=20&channel=web
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "_id": "65c1d2e3f4a5b6c7d8e9f0a1",
+        "channel": "web",
+        "language": "en",
+        "startedAt": "2026-01-15T12:00:00Z",
+        "endedAt": null,
+        "messageCount": 4,
+        "lastMessageAt": "2026-01-15T12:05:04Z"
+      }
+    ],
+    "pagination": {
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### `GET /ai/conversations/:conversationId/messages`
+
+Returns messages for one conversation.
+
+Auth required.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "65c2d3e4f5a6b7c8d9e0f1a2",
+      "senderType": "user",
+      "messageText": "Can I drive in Egypt using my Saudi driving license?",
+      "inputType": "text",
+      "createdAt": "2026-01-15T12:01:00Z"
+    },
+    {
+      "_id": "65c2d3e4f5a6b7c8d9e0f1a3",
+      "senderType": "assistant",
+      "messageText": "You may need to meet specific conditions before driving in Egypt with a foreign license.",
+      "answerConfidence": 0.91,
+      "retrievals": [
+        {
+          "legalChunkId": "65d1e2f3a4b5c6d7e8f9a0b1",
+          "sourceTitle": "Traffic Regulations Reference",
+          "articleRef": "Article 12",
+          "similarityScore": 0.93
+        }
+      ],
+      "createdAt": "2026-01-15T12:01:03Z"
+    }
+  ]
+}
+```
+
+---
+
+### `PATCH /ai/conversations/:conversationId/close`
+
+Closes a conversation.
+
+Auth required.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65c1d2e3f4a5b6c7d8e9f0a1",
+    "endedAt": "2026-01-15T12:30:00Z"
+  }
+}
+```
+
+---
+
+## 6. Applications
+
+### `POST /applications`
+
+Creates a new service application. This can be created from the service page or from an AI suggested action.
+
+Auth required.
+
+**Request**
+
+```json
+{
+  "serviceId": "65b2c3d4e5f6a7b8c9d0e1f2",
+  "sourceConversationId": "65c1d2e3f4a5b6c7d8e9f0a1",
+  "sourceMessageId": "65c2d3e4f5a6b7c8d9e0f1a3",
+  "notes": "I want to complete the process as soon as possible."
+}
+```
+
+**Response `201`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "applicationNumber": "APP-2026-000001",
+    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "profileId": "65a1b2c3d4e5f6a7b8c9d0e1",
+    "serviceId": "65b2c3d4e5f6a7b8c9d0e1f2",
+    "service": {
+      "serviceName": "Tourist Residence Renewal",
+      "governmentFee": 500,
+      "platformFee": 100,
+      "currency": "EGP"
+    },
+    "status": "pending_documents",
+    "currentStep": "document_upload",
+    "requiredDocuments": [
+      {
+        "documentType": "passport",
+        "isMandatory": true,
+        "status": "missing"
+      },
+      {
+        "documentType": "rental_contract",
+        "isMandatory": true,
+        "status": "missing"
+      }
+    ],
+    "submittedDocuments": [],
+    "statusHistory": [
+      {
+        "fromStatus": null,
+        "toStatus": "pending_documents",
+        "changedByUserId": "64f1a2b3c4d5e6f7a8b9c0d1",
+        "reason": "Application created",
+        "createdAt": "2026-01-15T13:00:00Z"
+      }
+    ],
+    "createdAt": "2026-01-15T13:00:00Z"
+  }
+}
+```
+
+---
+
+### `GET /applications`
+
+Returns applications for the current user.
+
+Auth required.
+
+**Query Params**
+
+```text
+page=1&limit=10&status=pending_documents&serviceId=65b2c3d4e5f6a7b8c9d0e1f2
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+        "applicationNumber": "APP-2026-000001",
+        "service": {
+          "serviceName": "Tourist Residence Renewal",
+          "estimatedDays": 7
+        },
+        "status": "pending_documents",
+        "currentStep": "document_upload",
+        "progressPercent": 20,
+        "createdAt": "2026-01-15T13:00:00Z",
+        "updatedAt": "2026-01-15T13:00:00Z"
+      }
+    ],
+    "pagination": {
+      "total": 1,
       "page": 1,
       "limit": 10,
       "totalPages": 1
@@ -1094,104 +1190,156 @@ page=1&limit=10&status=pending&serviceId=64f8b9c0d8e9f0a1b2c3d4e5
 
 ---
 
-### `GET /service-requests/:requestId`
+### `GET /applications/:applicationId`
 
-🔒 **Auth required**
+Returns application details.
+
+Auth required.
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64fbc2d3e4f5a6b7c8d9e0f1",
+    "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "applicationNumber": "APP-2026-000001",
     "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "profileId": "65a1b2c3d4e5f6a7b8c9d0e1",
     "service": {
-      "_id": "64f8b9c0d8e9f0a1b2c3d4e5",
-      "serviceName": "Passport Renewal",
+      "_id": "65b2c3d4e5f6a7b8c9d0e1f2",
+      "serviceName": "Tourist Residence Renewal",
       "estimatedDays": 7,
-      "governmentFee": 300,
-      "platformFee": 50
-    },
-    "reviewedByAdmin": {
-      "_id": "64f6f7a8b9c0d6e7f8a9b0c1",
-      "user": { "firstName": "Sara", "lastName": "Ali" },
-      "department": "Civil Affairs"
+      "governmentFee": 500,
+      "platformFee": 100,
+      "currency": "EGP"
     },
     "status": "under_review",
-    "currentStep": "admin_review",
-    "aiMatchScore": 0.94,
-    "submissionDate": "2025-06-15T10:00:00Z",
-    "completionDate": null,
-    "rejectionReason": null,
-    "notes": "Urgent — travelling next month",
-    "documents": [
+    "currentStep": "human_review",
+    "aiVerificationSummary": {
+      "overallStatus": "passed",
+      "overallScore": 0.98,
+      "matchedProfile": true,
+      "issuesCount": 0,
+      "completedAt": "2026-01-15T13:15:00Z"
+    },
+    "submittedDocuments": [
       {
-        "_id": "64fbc2d3e4f5a6b7c8d9e0f2",
-        "document": {
-          "_id": "64f2b3c4d5e6f7a8b9c0d2e3",
-          "documentType": "national_id",
-          "documentNumber": "29005151234567",
-          "verificationStatus": "verified"
+        "_id": "65e2f3a4b5c6d7e8f9a0b1c2",
+        "documentType": "passport",
+        "fileUrl": "https://storage.example.com/applications/passport.jpg",
+        "status": "verified",
+        "aiValidation": {
+          "ocrStatus": "completed",
+          "confidenceScore": 0.99,
+          "matchesProfile": true,
+          "expiryDate": "2030-01-01",
+          "rejectionReason": null
         },
-        "isApproved": true,
-        "comments": "Document verified successfully"
+        "uploadedAt": "2026-01-15T13:05:00Z"
       }
     ],
-    "payment": {
-      "status": "paid",
-      "governmentFeeAmount": 300,
-      "platformFeeAmount": 50,
-      "paidAt": "2025-06-15T10:30:00Z"
+    "adminReview": {
+      "reviewedByAdminId": "65f1a2b3c4d5e6f7a8b9c0d1",
+      "decision": "approved",
+      "notes": "AI verification is accepted.",
+      "reviewedAt": "2026-01-15T14:00:00Z"
     },
-    "appointment": {
-      "appointmentDate": "2025-06-22T09:00:00Z",
-      "status": "scheduled",
-      "govOffice": {
-        "officeName": "Cairo Civil Status Office",
-        "address": "5 Tahrir Square, Cairo"
-      }
-    }
+    "paymentSummary": {
+      "paymentId": "6601b2c3d4e5f6a7b8c9d0e1",
+      "status": "pending",
+      "totalAmount": 600,
+      "currency": "EGP"
+    },
+    "appointmentSummary": null,
+    "createdAt": "2026-01-15T13:00:00Z",
+    "updatedAt": "2026-01-15T14:00:00Z"
   }
 }
 ```
 
 ---
 
-### `GET /service-requests/admin/all` _(Admin only)_
+### `PATCH /applications/:applicationId/cancel`
 
-🔒 **Auth required — Admin**
+Cancels an application if its current status allows cancellation.
 
-كل الطلبات مع فلترة متقدمة.
+Auth required.
 
-**Query Params**
-```
-page=1&limit=20&status=pending&serviceId=...&userId=...&fromDate=2025-01-01&toDate=2025-06-30
+**Request**
+
+```json
+{
+  "reason": "I no longer need this service."
+}
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "requests": [
+    "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "status": "cancelled",
+    "cancelledAt": "2026-01-15T15:00:00Z"
+  }
+}
+```
+
+---
+
+### `GET /applications/admin/all`
+
+Returns all applications for the admin dashboard.
+
+Auth required. Admin or reviewer only.
+
+**Query Params**
+
+```text
+page=1&limit=20&status=under_review&serviceId=65b2c3d4e5f6a7b8c9d0e1f2&city=Minya&riskLevel=low&fromDate=2026-01-01&toDate=2026-01-31
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
       {
-        "_id": "64fbc2d3e4f5a6b7c8d9e0f1",
+        "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+        "applicationNumber": "APP-2026-000001",
         "user": {
+          "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
           "firstName": "Ahmed",
           "lastName": "Hassan",
           "email": "ahmed@example.com"
         },
-        "service": { "serviceName": "Passport Renewal" },
-        "status": "pending",
-        "aiMatchScore": 0.94,
-        "submissionDate": "2025-06-15T10:00:00Z"
+        "profile": {
+          "currentNationality": "SA",
+          "city": "Minya",
+          "riskLevel": "low"
+        },
+        "service": {
+          "serviceName": "Tourist Residence Renewal"
+        },
+        "status": "under_review",
+        "currentStep": "human_review",
+        "aiVerificationSummary": {
+          "overallStatus": "passed",
+          "overallScore": 0.98,
+          "issuesCount": 0
+        },
+        "createdAt": "2026-01-15T13:00:00Z"
       }
     ],
     "pagination": {
-      "total": 300,
+      "total": 1,
       "page": 1,
       "limit": 20,
-      "totalPages": 15
+      "totalPages": 1
     }
   }
 }
@@ -1199,195 +1347,458 @@ page=1&limit=20&status=pending&serviceId=...&userId=...&fromDate=2025-01-01&toDa
 
 ---
 
-### `PATCH /service-requests/:requestId/status` _(Admin only)_
+## 7. Application Documents and AI Verification
 
-🔒 **Auth required — Admin**
+### `POST /applications/:applicationId/documents`
 
-تغيير حالة الطلب.
+Uploads a document for an application and starts OCR and validation.
 
-**Request**
-```json
-{
-  "status": "approved",
-  "notes": "All documents verified. Request approved."
-}
+Auth required.
+
+**Request `multipart/form-data`**
+
+```text
+documentType: passport
+file: <image_or_pdf_file>
 ```
 
-> `status` enum: `pending` | `under_review` | `approved` | `rejected` | `completed` | `cancelled`
+**Response `201`**
 
-**Response `200`**
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "status": "approved",
-    "reviewedByAdminId": "64f6f7a8b9c0d6e7f8a9b0c1",
+    "_id": "65e2f3a4b5c6d7e8f9a0b1c2",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "documentType": "passport",
+    "fileUrl": "https://storage.example.com/applications/passport.jpg",
+    "status": "pending_ai_verification",
+    "aiValidation": {
+      "ocrStatus": "queued",
+      "confidenceScore": null,
+      "matchesProfile": null,
+      "rejectionReason": null
+    },
+    "uploadedAt": "2026-01-15T13:05:00Z"
+  }
+}
+```
+
+---
+
+### `GET /applications/:applicationId/documents`
+
+Returns application documents.
+
+Auth required.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "65e2f3a4b5c6d7e8f9a0b1c2",
+      "documentType": "passport",
+      "fileUrl": "https://storage.example.com/applications/passport.jpg",
+      "status": "verified",
+      "aiValidation": {
+        "ocrStatus": "completed",
+        "extractedFields": {
+          "fullName": "Ahmed Hassan",
+          "passportNumberMasked": "A123****",
+          "nationality": "SA",
+          "expiryDate": "2030-01-01"
+        },
+        "confidenceScore": 0.99,
+        "matchesProfile": true,
+        "validationResult": "verified",
+        "rejectionReason": null,
+        "completedAt": "2026-01-15T13:15:00Z"
+      },
+      "uploadedAt": "2026-01-15T13:05:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /applications/:applicationId/documents/:documentId`
+
+Returns one application document.
+
+Auth required.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65e2f3a4b5c6d7e8f9a0b1c2",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "documentType": "passport",
+    "fileUrl": "https://storage.example.com/applications/passport.jpg",
+    "status": "verified",
+    "aiValidation": {
+      "ocrStatus": "completed",
+      "ocrTextPreview": "PASSPORT AHMED HASSAN...",
+      "extractedFields": {
+        "fullName": "Ahmed Hassan",
+        "passportNumberMasked": "A123****",
+        "nationality": "SA",
+        "expiryDate": "2030-01-01"
+      },
+      "confidenceScore": 0.99,
+      "matchesProfile": true,
+      "validationChecks": [
+        {
+          "checkName": "document_readability",
+          "status": "passed",
+          "score": 0.99
+        },
+        {
+          "checkName": "expiry_date_valid",
+          "status": "passed",
+          "score": 1
+        },
+        {
+          "checkName": "profile_name_match",
+          "status": "passed",
+          "score": 0.98
+        }
+      ],
+      "validationResult": "verified",
+      "rejectionReason": null,
+      "completedAt": "2026-01-15T13:15:00Z"
+    },
+    "uploadedAt": "2026-01-15T13:05:00Z"
+  }
+}
+```
+
+---
+
+### `POST /applications/:applicationId/documents/:documentId/reprocess`
+
+Re-runs OCR and validation for a document.
+
+Auth required. Admin or document owner only.
+
+**Request**
+
+```json
+{
+  "reason": "User uploaded a clearer file."
+}
+```
+
+**Response `202`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "documentId": "65e2f3a4b5c6d7e8f9a0b1c2",
+    "status": "pending_ai_verification",
+    "jobId": "job_01HZY7J8D4N5"
+  }
+}
+```
+
+---
+
+### `GET /applications/:applicationId/ai-report`
+
+Returns the AI verification report for an application.
+
+Auth required. Admin, reviewer, or application owner.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "overallStatus": "passed",
+    "overallScore": 0.98,
+    "matchedProfile": true,
+    "issues": [],
+    "documents": [
+      {
+        "documentId": "65e2f3a4b5c6d7e8f9a0b1c2",
+        "documentType": "passport",
+        "status": "verified",
+        "confidenceScore": 0.99,
+        "checks": [
+          {
+            "checkName": "document_readability",
+            "status": "passed",
+            "score": 0.99
+          },
+          {
+            "checkName": "profile_match",
+            "status": "passed",
+            "score": 0.98
+          }
+        ]
+      }
+    ],
+    "completedAt": "2026-01-15T13:15:00Z"
+  }
+}
+```
+
+---
+
+### `PATCH /applications/:applicationId/documents/:documentId/admin-review`
+
+Allows an admin to override or confirm a document decision.
+
+Auth required. Admin or reviewer only.
+
+**Request**
+
+```json
+{
+  "status": "verified",
+  "comments": "Document reviewed and accepted.",
+  "overrideAiDecision": false
+}
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "documentId": "65e2f3a4b5c6d7e8f9a0b1c2",
+    "status": "verified",
+    "reviewedByAdminId": "65f1a2b3c4d5e6f7a8b9c0d1",
+    "reviewedAt": "2026-01-15T14:00:00Z"
+  }
+}
+```
+
+---
+
+## 8. Human Review and Escalation
+
+### `PATCH /applications/:applicationId/admin/decision`
+
+Final human decision after AI verification.
+
+Auth required. Admin or reviewer only.
+
+**Request**
+
+```json
+{
+  "decision": "approve",
+  "notes": "All documents are valid and AI verification score is high."
+}
+```
+
+**Allowed `decision` values**
+
+```text
+approve
+reject
+escalate
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "status": "pending_payment",
     "currentStep": "payment",
-    "updatedAt": "2025-06-16T09:00:00Z"
+    "adminReview": {
+      "reviewedByAdminId": "65f1a2b3c4d5e6f7a8b9c0d1",
+      "decision": "approve",
+      "notes": "All documents are valid and AI verification score is high.",
+      "reviewedAt": "2026-01-15T14:00:00Z"
+    },
+    "updatedAt": "2026-01-15T14:00:00Z"
   }
 }
 ```
 
 ---
 
-### `PATCH /service-requests/:requestId/reject` _(Admin only)_
+### `POST /applications/:applicationId/escalations`
 
-🔒 **Auth required — Admin**
+Creates an escalation record for a legally sensitive or unclear case.
 
-**Request**
-```json
-{
-  "rejectionReason": "Expired national ID. Please upload a valid document."
-}
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "status": "rejected",
-    "rejectionReason": "Expired national ID. Please upload a valid document.",
-    "updatedAt": "2025-06-16T09:00:00Z"
-  }
-}
-```
-
----
-
-### `DELETE /service-requests/:requestId`
-
-🔒 **Auth required**
-
-إلغاء طلب (فقط لو `status = pending`).
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "message": "Request cancelled successfully"
-}
-```
-
----
-
-## 7. Request Documents
-
-### `POST /service-requests/:requestId/documents`
-
-🔒 **Auth required**
-
-إضافة وثيقة لطلب موجود.
+Auth required. Admin or reviewer only.
 
 **Request**
+
 ```json
 {
-  "documentId": "64f2b3c4d5e6f7a8b9c0d2e3"
+  "reason": "Complex legal status requires senior review.",
+  "priority": "high",
+  "assignedToAdminId": "65f1a2b3c4d5e6f7a8b9c0d2"
 }
 ```
 
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64fcd3e4f5a6b7c8d9e0f1a2",
-    "requestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "documentId": "64f2b3c4d5e6f7a8b9c0d2e3",
-    "isApproved": null,
-    "comments": null
+    "_id": "65f9a0b1c2d3e4f5a6b7c8d9",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "reason": "Complex legal status requires senior review.",
+    "priority": "high",
+    "status": "open",
+    "assignedToAdminId": "65f1a2b3c4d5e6f7a8b9c0d2",
+    "createdAt": "2026-01-15T14:10:00Z"
   }
 }
 ```
 
 ---
 
-### `PATCH /service-requests/:requestId/documents/:docId` _(Admin only)_
+### `PATCH /escalations/:escalationId`
 
-🔒 **Auth required — Admin**
+Updates an escalation.
 
-مراجعة وثيقة ضمن طلب.
+Auth required. Admin or reviewer only.
 
 **Request**
+
 ```json
 {
-  "isApproved": true,
-  "comments": "Document is clear and valid"
+  "status": "resolved",
+  "resolutionNote": "Senior reviewer confirmed the application can proceed."
 }
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64fcd3e4f5a6b7c8d9e0f1a2",
-    "isApproved": true,
-    "comments": "Document is clear and valid"
+    "_id": "65f9a0b1c2d3e4f5a6b7c8d9",
+    "status": "resolved",
+    "resolutionNote": "Senior reviewer confirmed the application can proceed.",
+    "resolvedAt": "2026-01-15T15:00:00Z"
   }
 }
 ```
 
 ---
 
-## 8. Payments
+## 9. Payments
 
-### `POST /service-requests/:requestId/payments`
+### `POST /applications/:applicationId/payments`
 
-🔒 **Auth required**
+Creates a payment attempt for an approved application.
 
-إنشاء عملية دفع لطلب.
+Auth required.
 
 **Request**
+
 ```json
 {
   "paymentGateway": "paymob",
-  "currency": "EGP"
+  "currency": "EGP",
+  "returnUrl": "https://app.example.com/applications/65e1f2a3b4c5d6e7f8a9b0c1/payment-result"
 }
 ```
 
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64fde4f5a6b7c8d9e0f1a2b3",
-    "requestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "governmentFeeAmount": 300,
-    "platformFeeAmount": 50,
+    "_id": "6601b2c3d4e5f6a7b8c9d0e1",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "governmentFeeAmount": 500,
+    "platformFeeAmount": 100,
+    "totalAmount": 600,
     "currency": "EGP",
     "paymentGateway": "paymob",
-    "transactionRef": "PMB-2025-0012345",
+    "transactionRef": "PMB-2026-000001",
     "status": "pending",
-    "paymentUrl": "https://accept.paymob.com/api/acceptance/iframes/123456?payment_token=xyz"
+    "paymentUrl": "https://payment.example.com/pay/token",
+    "createdAt": "2026-01-15T14:05:00Z"
   }
 }
 ```
 
 ---
 
-### `GET /service-requests/:requestId/payments`
+### `GET /applications/:applicationId/payments`
 
-🔒 **Auth required**
+Returns payment attempts for an application.
 
-الحصول على تفاصيل الدفع لطلب معين.
+Auth required.
 
 **Response `200`**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "6601b2c3d4e5f6a7b8c9d0e1",
+      "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+      "governmentFeeAmount": 500,
+      "platformFeeAmount": 100,
+      "totalAmount": 600,
+      "currency": "EGP",
+      "paymentGateway": "paymob",
+      "transactionRef": "PMB-2026-000001",
+      "status": "paid",
+      "paidAt": "2026-01-15T14:10:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /payments/:paymentId`
+
+Returns one payment.
+
+Auth required.
+
+**Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "64fde4f5a6b7c8d9e0f1a2b3",
-    "requestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "governmentFeeAmount": 300,
-    "platformFeeAmount": 50,
+    "_id": "6601b2c3d4e5f6a7b8c9d0e1",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "governmentFeeAmount": 500,
+    "platformFeeAmount": 100,
+    "totalAmount": 600,
     "currency": "EGP",
     "paymentGateway": "paymob",
-    "transactionRef": "PMB-2025-0012345",
+    "transactionRef": "PMB-2026-000001",
     "status": "paid",
-    "paidAt": "2025-06-15T10:30:00Z"
+    "gatewayResponse": {
+      "providerStatus": "success",
+      "providerTransactionId": "provider-123"
+    },
+    "paidAt": "2026-01-15T14:10:00Z",
+    "createdAt": "2026-01-15T14:05:00Z"
   }
 }
 ```
@@ -1396,20 +1807,25 @@ page=1&limit=20&status=pending&serviceId=...&userId=...&fromDate=2025-01-01&toDa
 
 ### `POST /payments/webhook`
 
-Webhook من بوابة الدفع (لا يحتاج auth — بيتأمن بـ signature).
+Receives payment gateway events.
 
-**Request** _(من Paymob/Fawry/غيره)_
+Public endpoint. Must be secured by signature verification.
+
+**Request**
+
 ```json
 {
-  "transactionRef": "PMB-2025-0012345",
+  "transactionRef": "PMB-2026-000001",
+  "providerTransactionId": "provider-123",
   "status": "success",
-  "amount": 350,
+  "amount": 600,
   "currency": "EGP",
   "signature": "sha256-hmac-signature"
 }
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -1419,32 +1835,107 @@ Webhook من بوابة الدفع (لا يحتاج auth — بيتأمن بـ s
 
 ---
 
-## 9. Appointments & Gov Offices
+### `POST /payments/:paymentId/refund`
+
+Creates a refund request.
+
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "amount": 600,
+  "reason": "Application cancelled after payment."
+}
+```
+
+**Response `202`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "paymentId": "6601b2c3d4e5f6a7b8c9d0e1",
+    "refundStatus": "pending",
+    "refundRef": "REF-2026-000001"
+  }
+}
+```
+
+---
+
+## 10. Booking, Government Offices, and Appointments
 
 ### `GET /gov-offices`
 
-قائمة المكاتب الحكومية.
+Returns government offices.
+
+Public endpoint.
 
 **Query Params**
-```
-city=Cairo&officeType=passport&serviceId=64f8b9c0d8e9f0a1b2c3d4e5
+
+```text
+city=Minya&officeType=passport_office&serviceId=65b2c3d4e5f6a7b8c9d0e1f2
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": [
     {
-      "_id": "64fef5a6b7c8d9e0f1a2b3c4",
-      "officeName": "Cairo Civil Status Office",
-      "officeType": "civil_status",
-      "city": "Cairo",
-      "address": "5 Tahrir Square, Cairo",
-      "latitude": 30.0444,
-      "longitude": 31.2357
+      "_id": "6611c2d3e4f5a6b7c8d9e0f1",
+      "officeName": "Minya Passport Office",
+      "officeType": "passport_office",
+      "city": "Minya",
+      "address": "Example Government Complex, Minya",
+      "latitude": 28.0871,
+      "longitude": 30.7618,
+      "supportedServiceIds": ["65b2c3d4e5f6a7b8c9d0e1f2"],
+      "isActive": true
     }
   ]
+}
+```
+
+---
+
+### `POST /gov-offices`
+
+Creates a government office.
+
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "officeName": "Minya Passport Office",
+  "officeType": "passport_office",
+  "city": "Minya",
+  "address": "Example Government Complex, Minya",
+  "latitude": 28.0871,
+  "longitude": 30.7618,
+  "supportedServiceIds": ["65b2c3d4e5f6a7b8c9d0e1f2"],
+  "isActive": true
+}
+```
+
+**Response `201`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "6611c2d3e4f5a6b7c8d9e0f1",
+    "officeName": "Minya Passport Office",
+    "officeType": "passport_office",
+    "city": "Minya",
+    "isActive": true,
+    "createdAt": "2026-01-15T15:00:00Z"
+  }
 }
 ```
 
@@ -1452,202 +1943,76 @@ city=Cairo&officeType=passport&serviceId=64f8b9c0d8e9f0a1b2c3d4e5
 
 ### `GET /gov-offices/:officeId/slots`
 
-الحصول على المواعيد المتاحة لمكتب معين.
+Returns available appointment slots for an office.
+
+Public endpoint.
 
 **Query Params**
-```
-serviceId=64f8b9c0d8e9f0a1b2c3d4e5&fromDate=2025-06-20&toDate=2025-06-27
+
+```text
+serviceId=65b2c3d4e5f6a7b8c9d0e1f2&fromDate=2026-01-20&toDate=2026-01-30
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": [
     {
-      "_id": "64ff06b7c8d9e0f1a2b3c4d5",
-      "govOfficeId": "64fef5a6b7c8d9e0f1a2b3c4",
-      "serviceId": "64f8b9c0d8e9f0a1b2c3d4e5",
-      "slotDateTime": "2025-06-22T09:00:00Z",
+      "_id": "6612d3e4f5a6b7c8d9e0f1a2",
+      "govOfficeId": "6611c2d3e4f5a6b7c8d9e0f1",
+      "serviceId": "65b2c3d4e5f6a7b8c9d0e1f2",
+      "slotDateTime": "2026-01-22T09:00:00Z",
       "capacity": 10,
       "bookedCount": 3,
-      "availableSpots": 7
+      "availableSpots": 7,
+      "isAvailable": true
+    }
+  ]
+}
+```
+
+---
+
+### `POST /gov-offices/:officeId/slots`
+
+Creates appointment slots.
+
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "serviceId": "65b2c3d4e5f6a7b8c9d0e1f2",
+  "slots": [
+    {
+      "slotDateTime": "2026-01-22T09:00:00Z",
+      "capacity": 10
     },
     {
-      "_id": "64ff06b7c8d9e0f1a2b3c4d6",
-      "govOfficeId": "64fef5a6b7c8d9e0f1a2b3c4",
-      "serviceId": "64f8b9c0d8e9f0a1b2c3d4e5",
-      "slotDateTime": "2025-06-22T10:00:00Z",
-      "capacity": 10,
-      "bookedCount": 10,
-      "availableSpots": 0
+      "slotDateTime": "2026-01-22T10:00:00Z",
+      "capacity": 10
     }
   ]
 }
 ```
 
----
-
-### `POST /service-requests/:requestId/appointments`
-
-🔒 **Auth required**
-
-حجز موعد لطلب.
-
-**Request**
-```json
-{
-  "slotId": "64ff06b7c8d9e0f1a2b3c4d5"
-}
-```
-
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "65000718c9e0f1a2b3c4d5e6",
-    "requestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "slotId": "64ff06b7c8d9e0f1a2b3c4d5",
-    "govOfficeId": "64fef5a6b7c8d9e0f1a2b3c4",
-    "govOffice": {
-      "officeName": "Cairo Civil Status Office",
-      "address": "5 Tahrir Square, Cairo"
-    },
-    "appointmentDate": "2025-06-22T09:00:00Z",
-    "qrCode": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...",
-    "status": "scheduled",
-    "notes": null
-  }
-}
-```
-
----
-
-### `GET /service-requests/:requestId/appointments`
-
-🔒 **Auth required**
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "65000718c9e0f1a2b3c4d5e6",
-    "appointmentDate": "2025-06-22T09:00:00Z",
-    "status": "scheduled",
-    "qrCode": "data:image/png;base64,...",
-    "govOffice": {
-      "officeName": "Cairo Civil Status Office",
-      "officeType": "civil_status",
-      "city": "Cairo",
-      "address": "5 Tahrir Square, Cairo",
-      "latitude": 30.0444,
-      "longitude": 31.2357
-    }
-  }
-}
-```
-
----
-
-### `PATCH /service-requests/:requestId/appointments/:appointmentId`
-
-🔒 **Auth required**
-
-إعادة جدولة أو إلغاء موعد.
-
-**Request**
-```json
-{
-  "action": "reschedule",
-  "newSlotId": "64ff06b7c8d9e0f1a2b3c4d7"
-}
-```
-
-> `action` enum: `reschedule` | `cancel`
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "65000718c9e0f1a2b3c4d5e6",
-    "appointmentDate": "2025-06-24T11:00:00Z",
-    "status": "rescheduled",
-    "qrCode": "data:image/png;base64,..."
-  }
-}
-```
-
----
-
-### `POST /gov-offices` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-إضافة مكتب حكومي جديد.
-
-**Request**
-```json
-{
-  "officeName": "Alexandria Passport Office",
-  "officeType": "passport",
-  "city": "Alexandria",
-  "address": "10 Corniche Road, Alexandria",
-  "latitude": 31.2001,
-  "longitude": 29.9187
-}
-```
-
-**Response `201`**
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "65011829d0f1a2b3c4d5e6f7",
-    "officeName": "Alexandria Passport Office",
-    "officeType": "passport",
-    "city": "Alexandria",
-    "address": "10 Corniche Road, Alexandria",
-    "latitude": 31.2001,
-    "longitude": 29.9187
-  }
-}
-```
-
----
-
-### `POST /gov-offices/:officeId/slots` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-إضافة slot مواعيد لمكتب.
-
-**Request**
-```json
-{
-  "serviceId": "64f8b9c0d8e9f0a1b2c3d4e5",
-  "slots": [
-    { "slotDateTime": "2025-07-01T09:00:00Z", "capacity": 10 },
-    { "slotDateTime": "2025-07-01T10:00:00Z", "capacity": 10 },
-    { "slotDateTime": "2025-07-01T11:00:00Z", "capacity": 10 }
-  ]
-}
-```
-
-**Response `201`**
-```json
-{
-  "success": true,
-  "data": {
-    "created": 3,
+    "created": 2,
     "slots": [
       {
-        "_id": "65022930e1f2a3b4c5d6e7f8",
-        "slotDateTime": "2025-07-01T09:00:00Z",
+        "_id": "6612d3e4f5a6b7c8d9e0f1a2",
+        "slotDateTime": "2026-01-22T09:00:00Z",
         "capacity": 10,
-        "bookedCount": 0
+        "bookedCount": 0,
+        "isAvailable": true
       }
     ]
   }
@@ -1656,124 +2021,159 @@ serviceId=64f8b9c0d8e9f0a1b2c3d4e5&fromDate=2025-06-20&toDate=2025-06-27
 
 ---
 
-## 10. Complaints
+### `POST /applications/:applicationId/booking/auto`
 
-### `POST /complaints`
+Runs the booking agent after successful payment. The agent selects the nearest eligible office and books a slot.
 
-🔒 **Auth required**
-
-تقديم شكوى.
+Auth required.
 
 **Request**
+
 ```json
 {
-  "relatedRequestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-  "title": "Delayed processing",
-  "description": "My request has been pending for 14 days without any update."
+  "preferredDateFrom": "2026-01-22",
+  "preferredDateTo": "2026-01-30",
+  "preferredCity": "Minya"
 }
 ```
 
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "6503303af2a3b4c5d6e7f8a9",
-    "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "relatedRequestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-    "title": "Delayed processing",
-    "description": "My request has been pending for 14 days without any update.",
-    "status": "open",
-    "createdAt": "2025-06-15T15:00:00Z"
-  }
-}
-```
-
----
-
-### `GET /complaints`
-
-🔒 **Auth required**
-
-شكاوى المستخدم الحالي.
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "6503303af2a3b4c5d6e7f8a9",
-      "title": "Delayed processing",
-      "status": "open",
-      "createdAt": "2025-06-15T15:00:00Z",
-      "relatedRequest": {
-        "service": { "serviceName": "Passport Renewal" }
-      }
+    "appointment": {
+      "_id": "6613e4f5a6b7c8d9e0f1a2b3",
+      "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+      "slotId": "6612d3e4f5a6b7c8d9e0f1a2",
+      "govOfficeId": "6611c2d3e4f5a6b7c8d9e0f1",
+      "appointmentDate": "2026-01-22T09:00:00Z",
+      "status": "scheduled",
+      "qrCodeUrl": "https://storage.example.com/qrcodes/appointment-001.png",
+      "instructions": [
+        "Arrive 15 minutes before the appointment time.",
+        "Bring the original passport and uploaded documents.",
+        "Show the QR code at the reception desk."
+      ]
+    },
+    "application": {
+      "_id": "65e1f2a3b4c5d6e7f8a9b0c1",
+      "status": "completed",
+      "currentStep": "appointment_scheduled"
     }
-  ]
-}
-```
-
----
-
-### `GET /complaints/admin/all` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-**Query Params**
-```
-page=1&limit=20&status=open
-```
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": {
-    "complaints": [
-      {
-        "_id": "6503303af2a3b4c5d6e7f8a9",
-        "user": { "firstName": "Ahmed", "email": "ahmed@example.com" },
-        "title": "Delayed processing",
-        "status": "open",
-        "createdAt": "2025-06-15T15:00:00Z"
-      }
-    ],
-    "pagination": { "total": 45, "page": 1, "limit": 20, "totalPages": 3 }
   }
 }
 ```
 
 ---
 
-### `PATCH /complaints/:complaintId` _(Admin only)_
+### `POST /applications/:applicationId/appointments`
 
-🔒 **Auth required — Admin**
+Books a specific slot manually.
 
-تحديث حالة الشكوى وتعيين المسؤول.
+Auth required.
 
 **Request**
+
 ```json
 {
-  "status": "resolved",
-  "assignedToAdminId": "64f6f7a8b9c0d6e7f8a9b0c1",
-  "resolutionNote": "Issue has been escalated and resolved. Apologies for the delay."
+  "slotId": "6612d3e4f5a6b7c8d9e0f1a2"
 }
 ```
 
-> `status` enum: `open` | `in_progress` | `resolved` | `closed`
+**Response `201`**
 
-**Response `200`**
 ```json
 {
   "success": true,
   "data": {
-    "_id": "6503303af2a3b4c5d6e7f8a9",
-    "status": "resolved",
-    "assignedToAdminId": "64f6f7a8b9c0d6e7f8a9b0c1",
-    "resolutionNote": "Issue has been escalated and resolved. Apologies for the delay.",
-    "updatedAt": "2025-06-16T10:00:00Z"
+    "_id": "6613e4f5a6b7c8d9e0f1a2b3",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "slotId": "6612d3e4f5a6b7c8d9e0f1a2",
+    "govOfficeId": "6611c2d3e4f5a6b7c8d9e0f1",
+    "govOffice": {
+      "officeName": "Minya Passport Office",
+      "address": "Example Government Complex, Minya"
+    },
+    "appointmentDate": "2026-01-22T09:00:00Z",
+    "qrCodeUrl": "https://storage.example.com/qrcodes/appointment-001.png",
+    "status": "scheduled"
+  }
+}
+```
+
+---
+
+### `GET /applications/:applicationId/appointments`
+
+Returns appointment details for an application.
+
+Auth required.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "6613e4f5a6b7c8d9e0f1a2b3",
+    "applicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "appointmentDate": "2026-01-22T09:00:00Z",
+    "status": "scheduled",
+    "qrCodeUrl": "https://storage.example.com/qrcodes/appointment-001.png",
+    "instructions": [
+      "Arrive 15 minutes before the appointment time.",
+      "Bring the original passport and uploaded documents.",
+      "Show the QR code at the reception desk."
+    ],
+    "govOffice": {
+      "officeName": "Minya Passport Office",
+      "officeType": "passport_office",
+      "city": "Minya",
+      "address": "Example Government Complex, Minya",
+      "latitude": 28.0871,
+      "longitude": 30.7618
+    }
+  }
+}
+```
+
+---
+
+### `PATCH /applications/:applicationId/appointments/:appointmentId`
+
+Reschedules or cancels an appointment.
+
+Auth required.
+
+**Request**
+
+```json
+{
+  "action": "reschedule",
+  "newSlotId": "6612d3e4f5a6b7c8d9e0f1a5",
+  "reason": "The selected time is no longer suitable."
+}
+```
+
+**Allowed `action` values**
+
+```text
+reschedule
+cancel
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "6613e4f5a6b7c8d9e0f1a2b3",
+    "appointmentDate": "2026-01-24T11:00:00Z",
+    "status": "rescheduled",
+    "qrCodeUrl": "https://storage.example.com/qrcodes/appointment-001.png"
   }
 }
 ```
@@ -1784,30 +2184,45 @@ page=1&limit=20&status=open
 
 ### `GET /notifications`
 
-🔒 **Auth required**
+Returns notifications for the current user.
+
+Auth required.
 
 **Query Params**
-```
-page=1&limit=20&isRead=false
+
+```text
+page=1&limit=20&isRead=false&type=application_update
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "notifications": [
+    "items": [
       {
-        "_id": "6504413be3a4b5c6d7e8f9a0",
-        "title": "Request Approved",
-        "message": "Your Passport Renewal request has been approved. Please proceed to payment.",
-        "type": "request_update",
+        "_id": "6621d2e3f4a5b6c7d8e9f0a1",
+        "title": "Document verified",
+        "message": "Your passport document has been verified successfully.",
+        "type": "document_update",
+        "channel": "in_app",
+        "deliveryStatus": "sent",
         "isRead": false,
-        "createdAt": "2025-06-16T09:00:00Z"
+        "relatedEntity": {
+          "entityType": "application",
+          "entityId": "65e1f2a3b4c5d6e7f8a9b0c1"
+        },
+        "createdAt": "2026-01-15T13:15:00Z"
       }
     ],
     "unreadCount": 3,
-    "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 }
+    "pagination": {
+      "total": 10,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
+    }
   }
 }
 ```
@@ -1816,17 +2231,19 @@ page=1&limit=20&isRead=false
 
 ### `PATCH /notifications/:notificationId/read`
 
-🔒 **Auth required**
+Marks a notification as read.
 
-تعليم إشعار كمقروء.
+Auth required.
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "6504413be3a4b5c6d7e8f9a0",
-    "isRead": true
+    "_id": "6621d2e3f4a5b6c7d8e9f0a1",
+    "isRead": true,
+    "readAt": "2026-01-15T16:00:00Z"
   }
 }
 ```
@@ -1835,11 +2252,12 @@ page=1&limit=20&isRead=false
 
 ### `PATCH /notifications/read-all`
 
-🔒 **Auth required**
+Marks all notifications as read.
 
-تعليم كل الإشعارات كمقروءة.
+Auth required.
 
 **Response `200`**
+
 ```json
 {
   "success": true,
@@ -1849,83 +2267,185 @@ page=1&limit=20&isRead=false
 
 ---
 
-## 12. AI Assistant (RAG)
+## 12. Complaints and Support
 
-### `POST /ai/conversations`
+### `POST /complaints`
 
-🔒 **Auth required**
+Creates a complaint or support ticket.
 
-بدء محادثة جديدة مع المساعد الذكي.
+Auth required.
 
 **Request**
+
 ```json
 {
-  "channel": "web"
+  "relatedApplicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+  "title": "Delayed processing",
+  "description": "My application has been under review for a long time."
 }
 ```
-
-> `channel` enum: `web` | `mobile` | `whatsapp`
 
 **Response `201`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "6505524cc4b5d6e7f8a9b0c1",
+    "_id": "6631e2f3a4b5c6d7e8f9a0b1",
     "userId": "64f1a2b3c4d5e6f7a8b9c0d1",
-    "channel": "web",
-    "startedAt": "2025-06-15T16:00:00Z"
+    "relatedApplicationId": "65e1f2a3b4c5d6e7f8a9b0c1",
+    "title": "Delayed processing",
+    "description": "My application has been under review for a long time.",
+    "status": "open",
+    "createdAt": "2026-01-15T16:30:00Z"
   }
 }
 ```
 
 ---
 
-### `POST /ai/conversations/:conversationId/messages`
+### `GET /complaints`
 
-🔒 **Auth required**
+Returns complaints for the current user.
 
-إرسال رسالة للمساعد والحصول على الرد.
+Auth required.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "6631e2f3a4b5c6d7e8f9a0b1",
+      "title": "Delayed processing",
+      "status": "open",
+      "createdAt": "2026-01-15T16:30:00Z",
+      "relatedApplication": {
+        "applicationNumber": "APP-2026-000001",
+        "serviceName": "Tourist Residence Renewal"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### `GET /complaints/admin/all`
+
+Returns all complaints for admins.
+
+Auth required. Admin only.
+
+**Query Params**
+
+```text
+page=1&limit=20&status=open&assignedToAdminId=65f1a2b3c4d5e6f7a8b9c0d1
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "_id": "6631e2f3a4b5c6d7e8f9a0b1",
+        "user": {
+          "firstName": "Ahmed",
+          "lastName": "Hassan",
+          "email": "ahmed@example.com"
+        },
+        "title": "Delayed processing",
+        "status": "open",
+        "createdAt": "2026-01-15T16:30:00Z"
+      }
+    ],
+    "pagination": {
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### `PATCH /complaints/:complaintId`
+
+Updates complaint status.
+
+Auth required. Admin only.
 
 **Request**
+
 ```json
 {
-  "messageText": "ما هي المستندات المطلوبة لتجديد جواز السفر؟",
-  "inputType": "text"
+  "status": "resolved",
+  "assignedToAdminId": "65f1a2b3c4d5e6f7a8b9c0d1",
+  "resolutionNote": "The issue has been resolved."
 }
 ```
 
-> `inputType` enum: `text` | `voice`
-
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "userMessage": {
-      "_id": "6506635dd5c6e7f8a9b0c1d2",
-      "senderType": "user",
-      "messageText": "ما هي المستندات المطلوبة لتجديد جواز السفر؟",
-      "createdAt": "2025-06-15T16:01:00Z"
-    },
-    "assistantMessage": {
-      "_id": "6506635dd5c6e7f8a9b0c1d3",
-      "senderType": "assistant",
-      "messageText": "لتجديد جواز السفر المصري، تحتاج إلى: 1) بطاقة الرقم القومي السارية. 2) جواز السفر القديم (إن وجد). 3) إيصال سداد رسوم التجديد (300 جنيه مصري). ويستغرق التجديد عادةً من 5 إلى 7 أيام عمل.",
-      "retrievals": [
-        {
-          "legalChunkId": "6507746ee6d7f8a9b0c1d2e3",
-          "chunkText": "وفقاً للقانون رقم 97 لسنة 1959 وتعديلاته...",
-          "articleRef": "المادة 5",
-          "similarityScore": 0.92,
-          "source": {
-            "title": "قانون جوازات السفر المصرية",
-            "lawCategory": "Civil Status",
-            "issuingAuthority": "وزارة الداخلية"
-          }
-        }
-      ],
-      "createdAt": "2025-06-15T16:01:02Z"
+    "_id": "6631e2f3a4b5c6d7e8f9a0b1",
+    "status": "resolved",
+    "assignedToAdminId": "65f1a2b3c4d5e6f7a8b9c0d1",
+    "resolutionNote": "The issue has been resolved.",
+    "updatedAt": "2026-01-16T09:00:00Z"
+  }
+}
+```
+
+---
+
+## 13. Admin Users and Roles
+
+### `GET /users`
+
+Returns platform users.
+
+Auth required. Admin only.
+
+**Query Params**
+
+```text
+page=1&limit=20&status=active&role=foreigner&search=ahmed
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+        "firstName": "Ahmed",
+        "lastName": "Hassan",
+        "email": "ahmed@example.com",
+        "phoneNumber": "+201012345678",
+        "accountStatus": "active",
+        "roles": ["foreigner"],
+        "onboardingStatus": "completed",
+        "createdAt": "2026-01-15T10:00:00Z"
+      }
+    ],
+    "pagination": {
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
     }
   }
 }
@@ -1933,167 +2453,301 @@ page=1&limit=20&isRead=false
 
 ---
 
-### `GET /ai/conversations`
+### `PATCH /users/:userId/status`
 
-🔒 **Auth required**
+Updates a user account status.
 
-محادثات المستخدم السابقة.
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "accountStatus": "suspended",
+  "reason": "Suspicious activity detected."
+}
+```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "_id": "6505524cc4b5d6e7f8a9b0c1",
-      "channel": "web",
-      "startedAt": "2025-06-15T16:00:00Z",
-      "endedAt": "2025-06-15T16:10:00Z",
-      "messageCount": 6
-    }
-  ]
+  "data": {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "accountStatus": "suspended",
+    "updatedAt": "2026-01-16T10:00:00Z"
+  }
 }
 ```
 
 ---
 
-### `GET /ai/conversations/:conversationId/messages`
+### `PATCH /users/:userId/roles`
 
-🔒 **Auth required**
+Replaces user roles.
 
-رسائل محادثة معينة.
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "roles": ["foreigner", "reviewer"]
+}
+```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "_id": "6506635dd5c6e7f8a9b0c1d2",
-      "senderType": "user",
-      "messageText": "ما هي المستندات المطلوبة لتجديد جواز السفر؟",
-      "inputType": "text",
-      "createdAt": "2025-06-15T16:01:00Z"
+  "data": {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "roles": ["foreigner", "reviewer"],
+    "updatedAt": "2026-01-16T10:10:00Z"
+  }
+}
+```
+
+---
+
+### `PATCH /users/:userId/admin-profile`
+
+Creates or updates the admin profile embedded in the user document.
+
+Auth required. Super admin only.
+
+**Request**
+
+```json
+{
+  "department": "Residency Review",
+  "adminLevel": "reviewer",
+  "permissions": [
+    "applications.read",
+    "applications.review",
+    "documents.review"
+  ]
+}
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65f1a2b3c4d5e6f7a8b9c0d1",
+    "roles": ["reviewer"],
+    "adminProfile": {
+      "department": "Residency Review",
+      "adminLevel": "reviewer",
+      "permissions": [
+        "applications.read",
+        "applications.review",
+        "documents.review"
+      ]
     },
-    {
-      "_id": "6506635dd5c6e7f8a9b0c1d3",
-      "senderType": "assistant",
-      "messageText": "لتجديد جواز السفر المصري، تحتاج إلى...",
-      "createdAt": "2025-06-15T16:01:02Z"
-    }
-  ]
+    "updatedAt": "2026-01-16T10:20:00Z"
+  }
 }
 ```
 
 ---
 
-### `DELETE /ai/conversations/:conversationId`
+## 14. Legal Sources and Vector Indexing
 
-🔒 **Auth required**
+### `GET /legal-sources`
 
-إنهاء وحذف محادثة.
+Returns legal sources.
+
+Auth required. Admin only.
+
+**Query Params**
+
+```text
+page=1&limit=20&lawCategory=traffic&status=indexed
+```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
-  "message": "Conversation ended"
-}
-```
-
----
-
-### `GET /legal-sources` _(Admin only)_
-
-🔒 **Auth required — Admin**
-
-**Response `200`**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "6508857ff7e8a9b0c1d2e3f4",
-      "title": "قانون جوازات السفر المصرية",
-      "lawCategory": "Civil Status",
-      "issuingAuthority": "وزارة الداخلية",
-      "sourceUrl": "https://manshurat.org/node/14356",
-      "effectiveDate": "1959-01-01",
-      "version": "1.4",
-      "chunksCount": 48
+  "data": {
+    "items": [
+      {
+        "_id": "65d0e1f2a3b4c5d6e7f8a9b0",
+        "title": "Traffic Regulations Reference",
+        "lawCategory": "traffic",
+        "issuingAuthority": "Ministry of Interior",
+        "sourceUrl": "https://example.com/legal-source",
+        "effectiveDate": "2025-01-01",
+        "version": "1.0",
+        "status": "indexed",
+        "chunksCount": 120,
+        "createdAt": "2026-01-10T09:00:00Z"
+      }
+    ],
+    "pagination": {
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
     }
-  ]
+  }
 }
 ```
 
 ---
 
-### `POST /legal-sources` _(Admin only)_
+### `POST /legal-sources`
 
-🔒 **Auth required — Admin**
+Uploads a legal source and starts chunking and vector indexing.
 
-إضافة مصدر قانوني جديد وتقسيمه إلى chunks.
+Auth required. Admin only.
 
-**Request** `multipart/form-data`
-```
-title: قانون الأحوال المدنية
-lawCategory: Civil Status
-issuingAuthority: وزارة الداخلية
-sourceUrl: https://example.com/law
+**Request `multipart/form-data`**
+
+```text
+title: Traffic Regulations Reference
+lawCategory: traffic
+issuingAuthority: Ministry of Interior
+sourceUrl: https://example.com/legal-source
 effectiveDate: 2025-01-01
 version: 1.0
 documentFile: <pdf_file>
 ```
 
-**Response `201`**
+**Response `202`**
+
 ```json
 {
   "success": true,
   "data": {
-    "_id": "6509968000f1a2b3c4d5e6f7",
-    "title": "قانون الأحوال المدنية",
-    "chunksCreated": 65,
-    "status": "processing"
+    "_id": "65d0e1f2a3b4c5d6e7f8a9b0",
+    "title": "Traffic Regulations Reference",
+    "status": "processing",
+    "indexingJobId": "job_01HZVECTOR001",
+    "createdAt": "2026-01-10T09:00:00Z"
   }
 }
 ```
 
 ---
 
-## 13. Audit Logs
+### `GET /legal-sources/:sourceId/chunks`
 
-### `GET /audit-logs` _(Admin only)_
+Returns chunks for a legal source.
 
-🔒 **Auth required — Admin**
+Auth required. Admin only.
 
 **Query Params**
-```
-requestId=64fbc2d3e4f5a6b7c8d9e0f1&actorId=64f6f7a8b9c0d6e7f8a9b0c1&action=status_change&fromDate=2025-06-01&toDate=2025-06-30&page=1&limit=50
+
+```text
+page=1&limit=50
 ```
 
 **Response `200`**
+
 ```json
 {
   "success": true,
   "data": {
-    "logs": [
+    "items": [
       {
-        "_id": "650aa79111a2b3c4d5e6f7a8",
-        "requestId": "64fbc2d3e4f5a6b7c8d9e0f1",
-        "actor": {
-          "_id": "64f6f7a8b9c0d6e7f8a9b0c1",
-          "type": "admin",
-          "name": "Sara Ali",
-          "email": "sara@gov.eg"
-        },
-        "action": "status_change",
-        "previousState": { "status": "pending" },
-        "newState": { "status": "under_review" },
-        "createdAt": "2025-06-16T09:00:00Z"
+        "_id": "65d1e2f3a4b5c6d7e8f9a0b1",
+        "legalSourceId": "65d0e1f2a3b4c5d6e7f8a9b0",
+        "chunkTextPreview": "Foreign driving license requirements and restrictions...",
+        "articleRef": "Article 12",
+        "chunkIndex": 1,
+        "embeddingId": "vec_traffic_000001",
+        "vectorStoreName": "legal_sources_prod"
       }
     ],
     "pagination": {
-      "total": 28,
+      "total": 120,
+      "page": 1,
+      "limit": 50,
+      "totalPages": 3
+    }
+  }
+}
+```
+
+---
+
+### `POST /legal-sources/:sourceId/reindex`
+
+Rebuilds chunks and vector embeddings for a legal source.
+
+Auth required. Admin only.
+
+**Request**
+
+```json
+{
+  "reason": "Legal source was updated."
+}
+```
+
+**Response `202`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "sourceId": "65d0e1f2a3b4c5d6e7f8a9b0",
+    "status": "processing",
+    "indexingJobId": "job_01HZVECTOR002"
+  }
+}
+```
+
+---
+
+## 15. Audit Logs
+
+### `GET /audit-logs`
+
+Returns audit logs.
+
+Auth required. Admin only.
+
+**Query Params**
+
+```text
+entityType=application&entityId=65e1f2a3b4c5d6e7f8a9b0c1&actorUserId=65f1a2b3c4d5e6f7a8b9c0d1&action=status_change&fromDate=2026-01-01&toDate=2026-01-31&page=1&limit=50
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "_id": "6641f2a3b4c5d6e7f8a9b0c1",
+        "entityType": "application",
+        "entityId": "65e1f2a3b4c5d6e7f8a9b0c1",
+        "actorUserId": "65f1a2b3c4d5e6f7a8b9c0d1",
+        "actorRole": "reviewer",
+        "action": "status_change",
+        "previousState": {
+          "status": "under_review"
+        },
+        "newState": {
+          "status": "pending_payment"
+        },
+        "ipAddress": "192.0.2.10",
+        "userAgent": "Mozilla/5.0",
+        "createdAt": "2026-01-15T14:00:00Z"
+      }
+    ],
+    "pagination": {
+      "total": 1,
       "page": 1,
       "limit": 50,
       "totalPages": 1
@@ -2104,92 +2758,396 @@ requestId=64fbc2d3e4f5a6b7c8d9e0f1&actorId=64f6f7a8b9c0d6e7f8a9b0c1&action=statu
 
 ---
 
-## 14. Common Responses
+## 16. MongoDB Collections Summary
 
-### Success wrapper
+### `users`
+
+Stores account data, login identity, roles, and optional admin profile.
+
 ```json
 {
-  "success": true,
-  "data": { }
+  "_id": "ObjectId",
+  "firstName": "String",
+  "lastName": "String",
+  "email": "String",
+  "phoneNumber": "String",
+  "passwordHash": "String",
+  "emailVerified": "Boolean",
+  "emailVerifiedAt": "Date",
+  "preferredLanguage": "String",
+  "profileImageUrl": "String",
+  "accountStatus": "String",
+  "roles": ["String"],
+  "adminProfile": {
+    "department": "String",
+    "adminLevel": "String",
+    "permissions": ["String"]
+  },
+  "onboardingStatus": "String",
+  "createdAt": "Date",
+  "updatedAt": "Date"
 }
 ```
 
-### Error wrapper
+### `profiles`
+
+Stores sensitive foreigner identity profile data.
+
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid input data",
-    "details": [
-      { "field": "email", "message": "Must be a valid email address" }
-    ]
-  }
+  "_id": "ObjectId",
+  "userId": "ObjectId",
+  "passportNumberEncrypted": "String",
+  "passportNumberHash": "String",
+  "passportNumberMasked": "String",
+  "currentNationality": "String",
+  "dateOfBirth": "Date",
+  "gender": "String",
+  "entryDate": "Date",
+  "currentResidencyType": "String",
+  "currentResidencyExpiryDate": "Date",
+  "address": "Object",
+  "emergencyContact": "Object",
+  "profileStatus": "String",
+  "riskLevel": "String",
+  "createdAt": "Date",
+  "updatedAt": "Date"
 }
 ```
 
-### HTTP Status Codes
+### `services`
 
-| Code | Meaning |
-|------|---------|
-| `200` | OK |
-| `201` | Created |
-| `400` | Bad Request — validation error |
-| `401` | Unauthorized — missing or invalid token |
-| `403` | Forbidden — insufficient permissions |
-| `404` | Not Found |
-| `409` | Conflict — duplicate resource |
-| `422` | Unprocessable Entity |
-| `429` | Too Many Requests |
-| `500` | Internal Server Error |
+Stores government service definitions and embedded required document rules.
 
-### Error Codes
+```json
+{
+  "_id": "ObjectId",
+  "categoryId": "ObjectId",
+  "serviceName": "String",
+  "slug": "String",
+  "description": "String",
+  "estimatedDays": "Number",
+  "governmentFee": "Number",
+  "platformFee": "Number",
+  "currency": "String",
+  "requiresAppointment": "Boolean",
+  "competentOfficeType": "String",
+  "isActive": "Boolean",
+  "requiredDocuments": [
+    {
+      "documentType": "String",
+      "isMandatory": "Boolean",
+      "description": "String",
+      "validationRules": "Object"
+    }
+  ],
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
 
-| Code | Meaning |
-|------|---------|
-| `VALIDATION_ERROR` | حقل مطلوب أو قيمة غير صحيحة |
-| `UNAUTHORIZED` | توكن غير موجود أو منتهي الصلاحية |
-| `FORBIDDEN` | صلاحيات غير كافية |
-| `NOT_FOUND` | المورد غير موجود |
-| `DUPLICATE_ENTRY` | البيانات موجودة مسبقاً (مثل email مكرر) |
-| `DOCUMENT_EXPIRED` | الوثيقة منتهية الصلاحية |
-| `SLOT_FULL` | الموعد مكتمل |
-| `INVALID_STATUS_TRANSITION` | تغيير حالة غير مسموح |
-| `PAYMENT_FAILED` | فشل عملية الدفع |
-| `REQUEST_NOT_CANCELLABLE` | الطلب لا يمكن إلغاؤه في حالته الحالية |
+### `applications`
+
+Main workflow collection. Stores embedded documents, status history, AI summary, admin review, and summaries for payment and appointment.
+
+```json
+{
+  "_id": "ObjectId",
+  "applicationNumber": "String",
+  "userId": "ObjectId",
+  "profileId": "ObjectId",
+  "serviceId": "ObjectId",
+  "status": "String",
+  "currentStep": "String",
+  "sourceConversationId": "ObjectId",
+  "sourceMessageId": "ObjectId",
+  "requiredDocuments": ["Object"],
+  "submittedDocuments": ["Object"],
+  "aiVerificationSummary": "Object",
+  "adminReview": "Object",
+  "paymentSummary": "Object",
+  "appointmentSummary": "Object",
+  "statusHistory": ["Object"],
+  "notes": "String",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### `payments`
+
+Stores payment attempts. One application can have multiple payment records.
+
+```json
+{
+  "_id": "ObjectId",
+  "applicationId": "ObjectId",
+  "userId": "ObjectId",
+  "governmentFeeAmount": "Number",
+  "platformFeeAmount": "Number",
+  "totalAmount": "Number",
+  "currency": "String",
+  "paymentGateway": "String",
+  "transactionRef": "String",
+  "status": "String",
+  "gatewayResponse": "Object",
+  "failureReason": "String",
+  "paidAt": "Date",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### `appointments`
+
+Stores booked appointments.
+
+```json
+{
+  "_id": "ObjectId",
+  "applicationId": "ObjectId",
+  "userId": "ObjectId",
+  "slotId": "ObjectId",
+  "govOfficeId": "ObjectId",
+  "appointmentDate": "Date",
+  "qrCodeUrl": "String",
+  "instructions": ["String"],
+  "status": "String",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### `appointment_slots`
+
+Stores available capacity for government offices.
+
+```json
+{
+  "_id": "ObjectId",
+  "govOfficeId": "ObjectId",
+  "serviceId": "ObjectId",
+  "slotDateTime": "Date",
+  "capacity": "Number",
+  "bookedCount": "Number",
+  "isAvailable": "Boolean",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### `ai_conversations`
+
+Stores chat sessions.
+
+```json
+{
+  "_id": "ObjectId",
+  "userId": "ObjectId",
+  "channel": "String",
+  "language": "String",
+  "startedAt": "Date",
+  "endedAt": "Date",
+  "lastMessageAt": "Date"
+}
+```
+
+### `ai_messages`
+
+Stores chat messages and embedded RAG retrievals.
+
+```json
+{
+  "_id": "ObjectId",
+  "conversationId": "ObjectId",
+  "userId": "ObjectId",
+  "senderType": "String",
+  "messageText": "String",
+  "inputType": "String",
+  "answerConfidence": "Number",
+  "retrievals": ["Object"],
+  "suggestedActions": ["Object"],
+  "createdAt": "Date"
+}
+```
+
+### `legal_sources`
+
+Stores legal source metadata.
+
+```json
+{
+  "_id": "ObjectId",
+  "title": "String",
+  "lawCategory": "String",
+  "issuingAuthority": "String",
+  "sourceUrl": "String",
+  "effectiveDate": "Date",
+  "version": "String",
+  "status": "String",
+  "chunksCount": "Number",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### `legal_chunks`
+
+Stores text chunks and vector index references.
+
+```json
+{
+  "_id": "ObjectId",
+  "legalSourceId": "ObjectId",
+  "chunkText": "String",
+  "articleRef": "String",
+  "chunkIndex": "Number",
+  "embeddingId": "String",
+  "vectorStoreName": "String",
+  "createdAt": "Date"
+}
+```
 
 ---
 
-## Appendix — Status Flows
+## 17. Recommended Indexes
 
-### Service Request Status
-```
-pending → under_review → approved → completed
-                       ↘ rejected
-pending → cancelled
+```javascript
+db.users.createIndex({ email: 1 }, { unique: true });
+db.users.createIndex({ phoneNumber: 1 }, { unique: true });
+db.users.createIndex({ roles: 1, accountStatus: 1 });
+
+db.profiles.createIndex({ userId: 1 }, { unique: true });
+db.profiles.createIndex({ passportNumberHash: 1 }, { unique: true });
+db.profiles.createIndex({ currentNationality: 1 });
+db.profiles.createIndex({ "address.city": 1 });
+
+db.services.createIndex({ slug: 1 }, { unique: true });
+db.services.createIndex({ categoryId: 1, isActive: 1 });
+db.services.createIndex({ serviceName: "text", description: "text" });
+
+db.applications.createIndex({ applicationNumber: 1 }, { unique: true });
+db.applications.createIndex({ userId: 1, createdAt: -1 });
+db.applications.createIndex({ serviceId: 1, status: 1 });
+db.applications.createIndex({ status: 1, currentStep: 1 });
+db.applications.createIndex({ "submittedDocuments.status": 1 });
+db.applications.createIndex({ "aiVerificationSummary.overallStatus": 1 });
+
+db.payments.createIndex({ transactionRef: 1 }, { unique: true });
+db.payments.createIndex({ applicationId: 1, createdAt: -1 });
+db.payments.createIndex({ userId: 1, status: 1 });
+
+db.gov_offices.createIndex({ city: 1, officeType: 1 });
+db.gov_offices.createIndex({ location: "2dsphere" });
+
+db.appointment_slots.createIndex({ govOfficeId: 1, serviceId: 1, slotDateTime: 1 });
+db.appointment_slots.createIndex({ slotDateTime: 1, isAvailable: 1 });
+
+db.appointments.createIndex({ applicationId: 1 }, { unique: true });
+db.appointments.createIndex({ userId: 1, appointmentDate: -1 });
+db.appointments.createIndex({ slotId: 1 });
+
+db.ai_conversations.createIndex({ userId: 1, startedAt: -1 });
+db.ai_messages.createIndex({ conversationId: 1, createdAt: 1 });
+
+db.legal_sources.createIndex({ lawCategory: 1, status: 1 });
+db.legal_chunks.createIndex({ legalSourceId: 1, chunkIndex: 1 });
+
+db.notifications.createIndex({ userId: 1, isRead: 1, createdAt: -1 });
+db.audit_logs.createIndex({ entityType: 1, entityId: 1, createdAt: -1 });
+db.audit_logs.createIndex({ actorUserId: 1, createdAt: -1 });
 ```
 
-### Appointment Status
+---
+
+## 18. Status Flows
+
+### Application Status
+
+```text
+pending_documents -> ai_document_verification -> under_review -> pending_payment -> booking -> completed
+pending_documents -> cancelled
+ai_document_verification -> pending_documents
+under_review -> rejected
+under_review -> escalated -> under_review
+pending_payment -> payment_failed -> pending_payment
+booking -> completed
 ```
-scheduled → completed
-          → cancelled
-          → rescheduled → scheduled
+
+### Document Status
+
+```text
+pending_ai_verification -> verified
+pending_ai_verification -> rejected
+rejected -> pending_ai_verification
+verified -> admin_overridden
 ```
 
 ### Payment Status
+
+```text
+pending -> paid
+pending -> failed
+paid -> refunded
 ```
-pending → paid
-        → failed
-        → refunded
+
+### Appointment Status
+
+```text
+scheduled -> completed
+scheduled -> cancelled
+scheduled -> rescheduled -> scheduled
+```
+
+### Escalation Status
+
+```text
+open -> in_progress -> resolved
+open -> closed
 ```
 
 ### Complaint Status
-```
-open → in_progress → resolved → closed
+
+```text
+open -> in_progress -> resolved -> closed
 ```
 
-### Identity Document Verification Status
-```
-pending → verified
-        → rejected
-```
+---
+
+## 19. Common Error Codes
+
+| Code | Meaning |
+|---|---|
+| `VALIDATION_ERROR` | Required field is missing or invalid. |
+| `UNAUTHORIZED` | Missing or invalid access token. |
+| `FORBIDDEN` | User does not have enough permissions. |
+| `NOT_FOUND` | Resource was not found. |
+| `DUPLICATE_ENTRY` | Resource already exists. |
+| `PROFILE_REQUIRED` | User must complete the digital identity profile first. |
+| `EMAIL_NOT_VERIFIED` | Email address must be verified first. |
+| `INVALID_OBJECT_ID` | MongoDB ObjectId value is invalid. |
+| `DOCUMENT_EXPIRED` | Uploaded document is expired. |
+| `DOCUMENT_UNREADABLE` | OCR could not read the uploaded document. |
+| `DOCUMENT_PROFILE_MISMATCH` | Extracted document data does not match the user profile. |
+| `AI_VERIFICATION_PENDING` | AI verification has not completed yet. |
+| `HUMAN_REVIEW_REQUIRED` | Human review is required before proceeding. |
+| `INVALID_STATUS_TRANSITION` | The requested status transition is not allowed. |
+| `PAYMENT_REQUIRED` | Payment is required before booking. |
+| `PAYMENT_FAILED` | Payment gateway returned a failed status. |
+| `SLOT_FULL` | Selected appointment slot is full. |
+| `NO_ELIGIBLE_OFFICE_FOUND` | Booking agent could not find an eligible government office. |
+| `APPLICATION_NOT_CANCELLABLE` | Application cannot be cancelled in its current status. |
+| `RATE_LIMITED` | Too many requests. |
+| `INTERNAL_SERVER_ERROR` | Unexpected server error. |
+
+---
+
+## Notes for Backend Implementation
+
+- Store sensitive passport data encrypted or hashed. Never return raw passport numbers in normal API responses.
+- Use atomic updates or transactions for appointment slot booking to prevent overbooking.
+- Use signed URLs for private document files when possible.
+- Verify payment webhook signatures before updating payment status.
+- Store AI retrieval citations with every assistant answer for traceability.
+- Use audit logs for every admin action, status change, document decision, payment update, and booking action.
+- The vector store can be MongoDB Atlas Vector Search, Pinecone, Milvus, Qdrant, or another supported vector database.
